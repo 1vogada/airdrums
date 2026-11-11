@@ -5,6 +5,8 @@
 //             a ring closes in on each drum and you hit when it lands.
 //   'lanes' - the colors page: six lanes in the stick's LED colours, notes
 //             fall and you hit them on the line.
+//   'taiko' - the taiko page: one track, notes ride in from the right and
+//             you hit them on the circle.
 
 import { PADS, PAD, LANES } from './kit.js';
 
@@ -21,6 +23,10 @@ const KIT_AT = {
 // The tab page's lines, top to bottom, the way drum notation stacks them.
 const TAB_ROWS = ['crash', 'ride', 'hihat', 'tom', 'snare', 'floor', 'kick'];
 const RINGS = 3;          // rings shown per drum at once: more is a blur on a fast hi-hat
+const STICKS = PADS.filter((p) => !p.foot).map((p) => p.id);   // the six stick zones, in the kit's order
+const FLY = 0.32;         // seconds a hit note takes to fly to its drum's name on the taiko page
+const BURST = 0.26;       // seconds the ring off a hit lasts there
+const TAU = Math.PI * 2;
 
 export class Stage {
   constructor(canvas, mode) {
@@ -67,6 +73,7 @@ export class Stage {
     g.clearRect(0, 0, w, h);
     if (this.mode === 'tab') this.tab(game, pos, now);
     else if (this.mode === 'kit') this.kit(game, pos, now);
+    else if (this.mode === 'taiko') this.taiko(game, pos, now);
     else this.lanes(game, pos, now);
     this.pops = this.pops.filter((p) => now - p.at < POP);
   }
@@ -256,27 +263,279 @@ export class Stage {
       g.textBaseline = 'alphabetic';
     }
 
-    // the left foot has no line of its own: it sets the hi-hat open or closed
-    const up = this.footUp(game, pos);
-    const pedal = PAD.pedal;
-    const footGlow = this.glow('pedal', now);
-    const footW = Math.min(340, w - gutter - 24);
-    const footX = gutter + (w - gutter) / 2;
-    g.lineWidth = 2;
-    g.strokeStyle = mix(pedal.color, 0.8);
-    g.fillStyle = footGlow ? mix(pedal.color, 0.3 + 0.7 * footGlow) : up ? mix(pedal.color, 0.4) : '#12141b';
-    roundRect(g, footX - footW / 2, bottom + 14, footW, 26, 13);
-    g.fill();
-    g.stroke();
-    g.fillStyle = footGlow ? '#10131a' : up ? '#ffffff' : mix(pedal.color, 0.9);
-    g.font = '600 12px system-ui, sans-serif';
-    g.textAlign = 'center';
-    const state = up === null ? '' : up ? ' UP: open hi-hat' : ' down: closed hi-hat';
-    g.fillText(`${pedal.name} · ${pedal.foot}${state}`, footX, bottom + 31);
+    this.pedalPill(gutter + (w - gutter) / 2, bottom + 14, Math.min(340, w - gutter - 24), this.footUp(game, pos), now);
 
     for (const p of this.pops) {
       if (TAB_ROWS.includes(p.pad)) this.word(p, playX, yOf(p.pad) - r * 1.9, now);
     }
+  }
+
+  // ---- taiko page -----------------------------------------------------------
+
+  // One track, like a taiko game: notes ride in from the right and you hit
+  // them as they cross the circle. The sticks are on the big track, the bass
+  // drum on the thin one under it. Drums hit together share one note, split
+  // into their colours. A note you hit flies up to its drum's name.
+  taiko(game, pos, now) {
+    const { g, w, h } = this;
+    const gutter = Math.min(150, Math.max(84, w * 0.13));
+    const trackH = Math.max(90, Math.min(170, h * 0.27));
+    const footH = trackH * 0.42;
+    const pps = Math.max(260, (w - gutter) / 1.7);            // pixels per second
+    const R = Math.min(trackH * 0.34, 40, pps * 0.11);        // small enough that a fast run stays readable
+    const FR = footH * 0.34;
+    const legendH = 46;
+    const top = Math.max(8, (h - (legendH + trackH + 10 + footH + 44)) / 2) + legendH;
+    const cy = top + trackH / 2;
+    const footTop = top + trackH + 10;
+    const fy = footTop + footH / 2;
+    const hitX = gutter + R * 1.7;
+    const xOf = (dt) => hitX + dt * pps;
+    const chipW = (w - gutter) / STICKS.length;
+    const chipAt = (id) => [gutter + (STICKS.indexOf(id) + 0.5) * chipW, top - legendH / 2 - 2];
+
+    // the two tracks
+    g.fillStyle = '#171a22';
+    g.fillRect(gutter, top, w - gutter, trackH);
+    g.fillStyle = '#14171e';
+    g.fillRect(gutter, footTop, w - gutter, footH);
+    g.strokeStyle = '#2b3040';
+    g.lineWidth = 1;
+    for (const y of [top, top + trackH, footTop, footTop + footH]) {
+      g.beginPath();
+      g.moveTo(gutter, y);
+      g.lineTo(w, y);
+      g.stroke();
+    }
+
+    // what is on the way: sticks hit together become one note
+    const groups = new Map();                                 // group -> { dt, wait, miss }
+    const kicks = [];
+    const flying = [];
+    const behind = Math.max((hitX - gutter) / pps + 0.1, FLY + 0.2);
+    for (const [n, dt] of this.visible(game, pos, (w - hitX) / pps + 0.1, behind)) {
+      if (n.state === 'skip' || PAD[n.pad].free) continue;
+      const hit = n.state && n.state !== 'miss';
+      if (n.pad === 'kick') { if (!hit) kicks.push([n, dt]); continue; }
+      if (hit) { if (now - n.hitAt < FLY) flying.push(n); continue; }
+      let s = groups.get(n.group);
+      if (!s) groups.set(n.group, s = { dt, wait: [], miss: [] });
+      (n.state === 'miss' ? s.miss : s.wait).push(n);
+    }
+
+    g.save();
+    g.beginPath();
+    g.rect(gutter, top, w - gutter, footTop + footH - top);
+    g.clip();
+
+    if (game) {                                               // bar lines, as on a taiko track
+      const shift = game.offset - pos;
+      g.strokeStyle = '#3a4054';
+      g.lineWidth = 2;
+      for (const t of game.bars || []) {
+        const x = xOf(t + shift);
+        if (x < gutter || x > w) continue;
+        g.beginPath();
+        g.moveTo(x, top);
+        g.lineTo(x, top + trackH);
+        g.moveTo(x, footTop);
+        g.lineTo(x, footTop + footH);
+        g.stroke();
+      }
+    }
+
+    // the circle to hit on: lit in the colour of the drum just hit
+    let lit = null, most = 0;
+    for (const id of STICKS) {
+      const glow = this.glow(id, now);
+      if (glow > most) { most = glow; lit = id; }
+    }
+    const missed = lit && this.lit[lit].name === 'miss';
+    g.lineWidth = 3;
+    g.strokeStyle = missed ? JUDGE_COLOR.miss : '#e7e9f0';
+    g.fillStyle = lit && !missed ? mix(PAD[lit].color, 0.2 + 0.6 * most) : '#12141b';
+    g.beginPath();
+    g.arc(hitX, cy, R * 1.1, 0, TAU);
+    g.fill();
+    g.stroke();
+    g.lineWidth = 1.5;
+    g.strokeStyle = '#4a5068';
+    g.beginPath();
+    g.arc(hitX, cy, R * 0.66, 0, TAU);
+    g.stroke();
+
+    const kickGlow = this.glow('kick', now);
+    const kickMissed = this.lit.kick?.name === 'miss';
+    g.lineWidth = 2.5;
+    g.strokeStyle = kickMissed && kickGlow ? JUDGE_COLOR.miss : '#e7e9f0';
+    g.fillStyle = kickGlow && !kickMissed ? mix(PAD.kick.color, 0.2 + 0.6 * kickGlow) : '#12141b';
+    g.beginPath();
+    g.arc(hitX, fy, FR * 1.25, 0, TAU);
+    g.fill();
+    g.stroke();
+
+    // the notes, last one first so the next one to hit is on top
+    for (const [n, dt] of kicks.reverse()) {
+      g.globalAlpha = n.state === 'miss' ? 0.3 : 1;
+      this.disc(xOf(dt), fy, FR, ['kick'], n.state === 'miss', false);
+    }
+    for (const s of [...groups.values()].reverse()) {
+      const x = xOf(s.dt);
+      if (s.miss.length) {
+        g.globalAlpha = 0.35;
+        this.disc(x, cy, R, s.miss.map((n) => n.pad), true);
+      }
+      if (!s.wait.length) continue;
+      g.globalAlpha = 1;
+      this.disc(x, cy, R, s.wait.map((n) => n.pad));
+      if (s.wait.some((n) => n.open)) {                       // open hi-hat: left foot up
+        g.lineWidth = 2.5;
+        g.strokeStyle = PAD.hihat.color;
+        g.beginPath();
+        g.arc(x, cy - R * 1.24, R * 0.17, 0, TAU);
+        g.stroke();
+      }
+    }
+    g.globalAlpha = 1;
+    g.restore();
+
+    // the drums' names over the track: what each colour and code is
+    const named = chipW >= 124;
+    g.textBaseline = 'middle';
+    for (const id of STICKS) {
+      const p = PAD[id];
+      const [x, y] = chipAt(id);
+      const glow = this.glow(id, now);
+      g.font = '600 13px system-ui, sans-serif';
+      const text = named ? g.measureText(p.name).width + 8 : 0;
+      const cx = x - text / 2;
+      this.disc(cx, y, 14 + 3 * glow, [id]);
+      if (named) {
+        g.fillStyle = glow ? '#ffffff' : mix(p.color, 0.92);
+        g.font = '600 13px system-ui, sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.fillText(p.name, cx + 22, y);
+      }
+    }
+
+    // a note you hit flies up to its name
+    for (const n of flying) {
+      const f = (now - n.hitAt) / FLY;
+      const [x, y] = chipAt(n.pad);
+      const ease = 1 - (1 - f) * (1 - f);
+      g.globalAlpha = 1 - f * 0.8;
+      this.disc(hitX + (x - hitX) * ease, cy + (y - cy) * ease, R + (14 - R) * ease, [n.pad]);
+    }
+    g.globalAlpha = 1;
+
+    // the drum on the left: your combo
+    const D = Math.min(gutter * 0.38, trackH * 0.44);
+    g.lineWidth = 3;
+    g.strokeStyle = '#4a5068';
+    g.fillStyle = '#12141b';
+    g.beginPath();
+    g.arc(gutter / 2, cy, D, 0, TAU);
+    g.fill();
+    g.stroke();
+    g.fillStyle = lit && !missed ? mix(PAD[lit].color, 0.15 + 0.5 * most) : '#1d212c';
+    g.beginPath();
+    g.arc(gutter / 2, cy, D * 0.78, 0, TAU);
+    g.fill();
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    if (game && game.combo > 1) {
+      g.fillStyle = '#ffffff';
+      g.font = `700 ${Math.round(D * 0.58)}px system-ui, sans-serif`;
+      g.fillText(String(game.combo), gutter / 2, cy - D * 0.08);
+      g.fillStyle = '#b8bcc8';
+      g.font = `500 ${Math.max(9, Math.round(D * 0.22))}px system-ui, sans-serif`;
+      g.fillText('combo', gutter / 2, cy + D * 0.4);
+    }
+    g.fillStyle = kickGlow && !kickMissed ? '#ffffff' : mix(PAD.kick.color, 0.9);
+    g.font = '600 12px system-ui, sans-serif';
+    g.textAlign = 'right';
+    g.fillText(PAD.kick.name, gutter - 12, fy - 7);
+    g.fillStyle = '#7d8398';
+    g.font = '500 11px system-ui, sans-serif';
+    g.fillText(PAD.kick.foot, gutter - 12, fy + 8);
+    g.textBaseline = 'alphabetic';
+
+    this.pedalPill(gutter + (w - gutter) / 2, footTop + footH + 12, Math.min(340, w - gutter - 24), this.footUp(game, pos), now);
+
+    // a ring bursts out of the circle on a hit; only the newest judgement of
+    // each track is written, or a fast run stacks them into a smear
+    const newest = {};
+    for (const p of this.pops) {
+      const foot = p.pad === 'kick';
+      if (foot) newest.foot = p; else newest.hand = p;
+      const age = (now - p.at) / BURST;
+      if (p.name === 'miss' || age >= 1) continue;
+      g.globalAlpha = (1 - age) * 0.8;
+      g.strokeStyle = PAD[p.pad].color;
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(hitX, foot ? fy : cy, (foot ? FR * 1.25 : R * 1.1) * (1 + age * 0.7), 0, TAU);
+      g.stroke();
+      g.globalAlpha = 1;
+    }
+    if (newest.hand) this.word(newest.hand, hitX, cy - R * 1.12, now);
+    if (newest.foot) this.word(newest.foot, hitX, fy + 5, now);
+  }
+
+  // A taiko note: a white-rimmed disc with one slice per drum hit together,
+  // each in its drum's colour with its short name.
+  disc(x, y, r, pads, missed = false, label = true) {
+    const { g } = this;
+    const ids = [...pads].sort((a, b) => PAD[a].col - PAD[b].col || PAD[a].row - PAD[b].row);
+    const inner = r * 0.84;
+    const n = ids.length;
+    g.fillStyle = missed ? '#5b6072' : '#f4f5f8';
+    g.beginPath();
+    g.arc(x, y, r, 0, TAU);
+    g.fill();
+    ids.forEach((id, i) => {
+      g.fillStyle = missed ? mix(JUDGE_COLOR.miss, 0.75) : PAD[id].color;
+      g.beginPath();
+      if (n === 1) {
+        g.arc(x, y, inner, 0, TAU);
+      } else {                                                // slices start at the bottom, the first one on the left
+        g.moveTo(x, y);
+        g.arc(x, y, inner, Math.PI / 2 + (i * TAU) / n, Math.PI / 2 + ((i + 1) * TAU) / n);
+        g.closePath();
+      }
+      g.fill();
+    });
+    if (!label || r < 12) return;
+    g.fillStyle = '#10131a';
+    g.font = `700 ${Math.round(r * (n === 1 ? 0.6 : n === 2 ? 0.42 : 0.34))}px system-ui, sans-serif`;
+    g.textAlign = 'center';
+    const base = g.textBaseline;
+    g.textBaseline = 'middle';
+    ids.forEach((id, i) => {
+      const a = Math.PI / 2 + ((i + 0.5) * TAU) / n;
+      const d = n === 1 ? 0 : inner * 0.52;
+      g.fillText(PAD[id].short, x + Math.cos(a) * d, y + Math.sin(a) * d + 1);
+    });
+    g.textBaseline = base;
+  }
+
+  // The left foot has no notes of its own: it sets the hi-hat open or closed.
+  pedalPill(x, y, width, up, now) {
+    const { g } = this;
+    const pedal = PAD.pedal;
+    const glow = this.glow('pedal', now);
+    g.lineWidth = 2;
+    g.strokeStyle = mix(pedal.color, 0.8);
+    g.fillStyle = glow ? mix(pedal.color, 0.3 + 0.7 * glow) : up ? mix(pedal.color, 0.4) : '#12141b';
+    roundRect(g, x - width / 2, y, width, 26, 13);
+    g.fill();
+    g.stroke();
+    g.fillStyle = glow ? '#10131a' : up ? '#ffffff' : mix(pedal.color, 0.9);
+    g.font = '600 12px system-ui, sans-serif';
+    g.textAlign = 'center';
+    const state = up === null ? '' : up ? ' UP: open hi-hat' : ' down: closed hi-hat';
+    g.fillText(`${pedal.name} · ${pedal.foot}${state}`, x, y + 17);
   }
 
   // ---- drums page -----------------------------------------------------------

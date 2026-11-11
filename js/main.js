@@ -1,4 +1,4 @@
-// Ties the pages together: menu, the two game pages (drums and colors) and setup.
+// Ties the pages together: menu, the game pages (tab, drums, colors, taiko) and setup.
 
 import { PADS, PAD, KEY_TO_PAD } from './kit.js';
 import * as store from './store.js';
@@ -43,7 +43,7 @@ let fine = 0;                           // your own tuning on top of that, kept 
 
 // ---- routing ----------------------------------------------------------------
 
-const MODES = { tab: 'tab', drums: 'kit', colors: 'lanes' };     // page name -> how the stage draws it
+const MODES = { tab: 'tab', drums: 'kit', colors: 'lanes', taiko: 'taiko' };     // page name -> how the stage draws it
 
 function route() {
   const where = location.hash.replace(/^#\/?/, '') || 'menu';
@@ -447,7 +447,7 @@ function showSetup(message) {
   const on = spotify.linked();
   $('unlink').hidden = !on;
   $('link').textContent = on ? 'Link again' : 'Link Spotify';
-  $('spotifyState').textContent = message || (on ? 'Linked. Play a song on Spotify and open Drums or Colors.' : 'Not linked yet.');
+  $('spotifyState').textContent = message || (on ? 'Linked. Play a song on Spotify and open Tab, Drums, Colors or Taiko.' : 'Not linked yet.');
   $('threshold').value = mic.threshold;
   showThreshold();
   showMic();
@@ -530,10 +530,10 @@ const came = await spotify.finishLogin();
 if (came) {
   location.hash = '#/setup';
   route();
-  showSetup(came === 'linked' ? 'Linked. Play a song on Spotify and open Drums or Colors.' : came);
+  showSetup(came === 'linked' ? 'Linked. Play a song on Spotify and open Tab, Drums, Colors or Taiko.' : came);
 } else {
   const q = new URLSearchParams(location.search);
-  if (q.get('demo') && !/^#\/(tab|drums|colors)/.test(location.hash)) location.hash = '#/tab';
+  if (q.get('demo') && !/^#\/(tab|drums|colors|taiko)/.test(location.hash)) location.hash = '#/tab';
   route();
   if (q.get('demo')) demo(q.get('demo'), Number(q.get('at')) || 0);
 }

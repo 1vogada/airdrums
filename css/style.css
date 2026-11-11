@@ -107,6 +107,7 @@ code {
 }
 .art-kit { grid-template-columns: repeat(3, 1fr); place-items: center; }
 .art-kit i { width: 46px; height: 46px; border-radius: 50%; border: 4px solid var(--c); }
+.art-taiko { display: block; width: 100%; padding: 0; }
 .art-lanes { grid-template-columns: repeat(6, 1fr); gap: 6px; align-items: end; }
 .art-lanes i { height: 14px; border-radius: 7px; background: var(--c); }
 .art-lanes i:nth-child(1) { margin-bottom: 70px; }
