@@ -18,8 +18,13 @@ Try it without Spotify: https://1vogada.github.io/airdrums/?demo=everlong%20foo%
 - **Scores your hits by microphone.** The sticks only talk to the speaker, so
   the site listens for the drum sounds.
 
-Two pages, same notes:
+![The tab page: Du Hast written out, one line per drum](docs/tab.png)
 
+Three pages, same notes:
+
+- **Tab** (the main one): the drum part written out like a tab. One line per
+  drum, bars and beats, scrolling under a play line. A cross is a cymbal, a
+  dot is a drum, a small ring over a hi-hat cross means open.
 - **Drums**: the kit laid out like the manual's picture. A ring closes in on
   the drum to hit.
 - **Colors**: six lanes in the sticks' LED colours. Notes fall and you hit

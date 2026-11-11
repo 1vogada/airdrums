@@ -12,6 +12,24 @@
 <main id="menu" class="view">
   <h1>Air Drums</h1>
   <p class="lead">Play the real drum part of the song Spotify is playing.</p>
+  <a class="card card-main" href="#/tab">
+    <svg class="art art-tab" viewBox="0 0 600 150" aria-hidden="true">
+      <g stroke="#2b3040" stroke-width="1.5">
+        <line x1="0" y1="30" x2="600" y2="30"/><line x1="0" y1="60" x2="600" y2="60"/>
+        <line x1="0" y1="90" x2="600" y2="90"/><line x1="0" y1="120" x2="600" y2="120"/>
+      </g>
+      <g stroke="#4a5068" stroke-width="2"><line x1="250" y1="22" x2="250" y2="128"/><line x1="490" y1="22" x2="490" y2="128"/></g>
+      <line x1="120" y1="12" x2="120" y2="138" stroke="#e7e9f0" stroke-width="2"/>
+      <g stroke="#6ec6f5" stroke-width="4" stroke-linecap="round"><path d="M243 23l14 14M257 23l-14 14"/></g>
+      <g stroke="#35b558" stroke-width="4" stroke-linecap="round">
+        <path d="M133 53l14 14M147 53l-14 14M193 53l14 14M207 53l-14 14M313 53l14 14M327 53l-14 14M373 53l14 14M387 53l-14 14M433 53l14 14M447 53l-14 14M543 53l14 14M557 53l-14 14"/>
+      </g>
+      <g fill="#f5d90a"><circle cx="200" cy="90" r="9"/><circle cx="320" cy="90" r="9"/><circle cx="440" cy="90" r="9"/><circle cx="560" cy="90" r="9"/></g>
+      <g fill="#e9e9ee"><circle cx="140" cy="120" r="10"/><circle cx="250" cy="120" r="10"/><circle cx="380" cy="120" r="10"/><circle cx="490" cy="120" r="10"/></g>
+    </svg>
+    <h2>Tab</h2>
+    <p>The drum part written out like a tab: one line per drum, bars and beats, scrolling under a play line.</p>
+  </a>
   <div class="cards">
     <a class="card" href="#/drums">
       <div class="art art-kit" aria-hidden="true">
@@ -74,7 +92,7 @@
   <footer class="keys">
     <span>Test keys: <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> top row, <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> bottom row, <kbd>Z</kbd> left foot, <kbd>Space</kbd> right foot</span>
     <span><kbd>[</kbd> <kbd>]</kbd> sync</span>
-    <span>Hollow or dashed hi-hat = open: left foot up</span>
+    <span>Open hi-hat (left foot up): a ring over the cross, hollow, or dashed</span>
     <a href="#/map">Kit map</a>
     <span id="manualKeys" hidden><kbd>Enter</kbd> start / pause · <kbd>←</kbd> <kbd>→</kbd> 5 s · <kbd>Home</kbd> start over</span>
   </footer>

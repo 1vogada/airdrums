@@ -78,8 +78,10 @@ code {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
-  margin-top: 22px;
 }
+.card-main { margin-top: 22px; border-color: var(--soft); }
+.card-main h2 { font-size: 32px; }
+.art-tab { display: block; width: 100%; height: auto; aspect-ratio: 4 / 1; padding: 0; }
 .card {
   display: flex;
   flex-direction: column;

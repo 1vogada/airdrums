@@ -32,12 +32,14 @@ let fine = 0;                           // your own tuning on top of that, kept 
 
 // ---- routing ----------------------------------------------------------------
 
+const MODES = { tab: 'tab', drums: 'kit', colors: 'lanes' };     // page name -> how the stage draws it
+
 function route() {
   const where = location.hash.replace(/^#\/?/, '') || 'menu';
-  const page = where === 'drums' || where === 'colors' ? 'play' : where === 'setup' || where === 'map' ? where : 'menu';
+  const page = MODES[where] ? 'play' : where === 'setup' || where === 'map' ? where : 'menu';
   for (const id of ['menu', 'play', 'setup', 'map']) $(id).hidden = id !== page;
   cancelAnimationFrame(frame);
-  if (page === 'play') enterPlay(where === 'drums' ? 'kit' : 'lanes');
+  if (page === 'play') enterPlay(MODES[where]);
   if (page === 'menu') showMenu();
   if (page === 'setup') showSetup();
 }
@@ -110,6 +112,8 @@ async function loadPicked(mine = ++loading) {
     if (mine !== loading) return;
     parsed = got;
     game = new Game(parsed.notes);
+    game.bars = parsed.bars;
+    game.beats = parsed.beats;
     fillDifficulty();
     roughShift = null;
     fine = store.get(fineKey(), 0);
@@ -447,7 +451,7 @@ if (came) {
   showSetup(came === 'linked' ? 'Linked. Play a song on Spotify and open Drums or Colors.' : came);
 } else {
   const q = new URLSearchParams(location.search);
-  if (q.get('demo') && !/^#\/(drums|colors)/.test(location.hash)) location.hash = '#/colors';
+  if (q.get('demo') && !/^#\/(tab|drums|colors)/.test(location.hash)) location.hash = '#/tab';
   route();
   if (q.get('demo')) demo(q.get('demo'), Number(q.get('at')) || 0);
 }

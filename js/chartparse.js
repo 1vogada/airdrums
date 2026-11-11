@@ -53,6 +53,22 @@ function phraseStarts(marks, sung) {
   return out;
 }
 
+// When each bar and each other beat starts, in seconds, from the time signatures.
+function measures(resolution, sigs, lastTick, clock) {
+  const s = [...sigs].sort((a, b) => a.tick - b.tick);
+  if (!s.length || s[0].tick > 0) s.unshift({ tick: 0, num: 4, den: 4 });
+  const bars = [], beats = [];
+  for (let i = 0; i < s.length; i++) {
+    const end = i + 1 < s.length ? s[i + 1].tick : lastTick + resolution * 4;
+    const beat = (resolution * 4) / (s[i].den || 4);
+    for (let tick = s[i].tick, n = 0; tick < end; tick += beat, n++) {
+      (n % (s[i].num || 4) === 0 ? bars : beats).push(clock(tick));
+      if (bars.length + beats.length > 20000) return { bars, beats };
+    }
+  }
+  return { bars, beats };
+}
+
 function finish(hits, phrases, clock, drumType, extra) {
   const seen = new Set();
   const notes = [];
@@ -90,10 +106,12 @@ export function parseChartText(text, wanted = 'expert') {
     if (i > 0) song[l.slice(0, i).trim()] = l.slice(i + 1).trim().replace(/^"|"$/g, '');
   }
   const resolution = Number(song.Resolution) || 192;
-  const tempos = [];
+  const tempos = [], sigs = [];
   for (const l of sections.SyncTrack || []) {
     const m = /^(\d+)\s*=\s*B\s+(\d+)/.exec(l);
     if (m && Number(m[2]) > 0) tempos.push({ tick: Number(m[1]), usPerBeat: 6e10 / Number(m[2]) });
+    const ts = /^(\d+)\s*=\s*TS\s+(\d+)(?:\s+(\d+))?/.exec(l);
+    if (ts && Number(ts[2]) > 0) sigs.push({ tick: Number(ts[1]), num: Number(ts[2]), den: 2 ** Number(ts[3] ?? 2) });
   }
   tempos.sort((a, b) => a.tick - b.tick);
   const marks = [], sung = [];
@@ -123,8 +141,10 @@ export function parseChartText(text, wanted = 'expert') {
       for (const lane of at.lanes) hits.push({ tick, lane, cymbal: at.cym.has(lane) });
     }
   }
-  return finish(hits, phrases, tempoClock(resolution, tempos), drumType, {
+  const clock = tempoClock(resolution, tempos);
+  return finish(hits, phrases, clock, drumType, {
     difficulty, available, drumType, offset: Number(song.Offset) || 0, format: 'chart',
+    ...measures(resolution, sigs, hits.reduce((m, h) => Math.max(m, h.tick), 0), clock),
   });
 }
 
@@ -221,7 +241,7 @@ function readMidi(bytes) {
 }
 
 function readTrack(b, p, end) {
-  const track = { name: '', tempos: [], on: [], off: [], lyrics: [] };
+  const track = { name: '', tempos: [], sigs: [], on: [], off: [], lyrics: [] };
   let tick = 0, status = 0;
   const vlq = () => { let v = 0, c; do { c = b[p++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80 && p < end); return v; };
   while (p < end) {
@@ -233,6 +253,7 @@ function readTrack(b, p, end) {
       if (type === 0x03 && !track.name) track.name = new TextDecoder('latin1').decode(b.subarray(p, p + len));
       else if ((type === 0x05 || type === 0x01) && len && b[p] !== 0x5b) track.lyrics.push(tick);   // not "[section]" text
       else if (type === 0x51 && len === 3) track.tempos.push({ tick, usPerBeat: (b[p] << 16) | (b[p + 1] << 8) | b[p + 2] });
+      else if (type === 0x58 && len >= 2 && b[p]) track.sigs.push({ tick, num: b[p], den: 2 ** b[p + 1] });
       p += len;
     } else if (s === 0xf0 || s === 0xf7) {
       p += vlq();
@@ -300,8 +321,10 @@ export function parseMidi(bytes, wanted = 'expert', drumTypeHint = null) {
       }
     }
   }
-  return finish(hits, phrases, tempoClock(division, tempos), drumType, {
+  const clock = tempoClock(division, tempos);
+  return finish(hits, phrases, clock, drumType, {
     difficulty, available, drumType, offset: 0, format: 'mid', real,
+    ...measures(division, tracks.flatMap((t) => t.sigs), hits.reduce((m, h) => Math.max(m, h.tick), 0), clock),
   });
 }
 

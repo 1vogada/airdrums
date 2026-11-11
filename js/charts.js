@@ -123,6 +123,8 @@ export async function loadChart(chart, difficulty = 'expert') {
   if (shift) {
     for (const n of parsed.notes) n.t += shift;
     parsed.phrases = parsed.phrases.map((t) => t + shift);
+    parsed.bars = parsed.bars.map((t) => t + shift);
+    parsed.beats = parsed.beats.map((t) => t + shift);
   }
   return parsed;
 }

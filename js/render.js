@@ -1,4 +1,6 @@
-// Draws the two game pages on a canvas.
+// Draws the game pages on a canvas.
+//   'tab'   - the main page: the drum part written out like a tab, one line
+//             per drum, scrolling under a play line.
 //   'kit'   - the drums page: your kit laid out like the manual's picture,
 //             a ring closes in on each drum and you hit when it lands.
 //   'lanes' - the colors page: six lanes in the stick's LED colours, notes
@@ -16,6 +18,8 @@ const KIT_AT = {
   hihat: [0.22, 0.56], snare: [0.5, 0.54], floor: [0.78, 0.56],
   pedal: [0.33, 0.89], kick: [0.67, 0.89],
 };
+// The tab page's lines, top to bottom, the way drum notation stacks them.
+const TAB_ROWS = ['crash', 'ride', 'hihat', 'tom', 'snare', 'floor', 'kick'];
 const RINGS = 3;          // rings shown per drum at once: more is a blur on a fast hi-hat
 
 export class Stage {
@@ -61,7 +65,9 @@ export class Stage {
     const { g, w, h } = this;
     this.take(game);
     g.clearRect(0, 0, w, h);
-    if (this.mode === 'kit') this.kit(game, pos, now); else this.lanes(game, pos, now);
+    if (this.mode === 'tab') this.tab(game, pos, now);
+    else if (this.mode === 'kit') this.kit(game, pos, now);
+    else this.lanes(game, pos, now);
     this.pops = this.pops.filter((p) => now - p.at < POP);
   }
 
@@ -108,6 +114,169 @@ export class Stage {
     g.textAlign = 'center';
     g.fillText(p.name, x, y - 14 * age);
     g.globalAlpha = 1;
+  }
+
+  // ---- tab page -------------------------------------------------------------
+
+  // The drum part written out like a tab: one line per drum, time running
+  // left to right, scrolling under a play line. A cross is a cymbal, a dot is
+  // a drum, a small ring over a hi-hat cross means open (left foot up).
+  tab(game, pos, now) {
+    const { g, w, h } = this;
+    const gutter = Math.min(150, Math.max(96, w * 0.13));
+    const rowH = Math.max(30, Math.min(62, (h - 110) / TAB_ROWS.length));
+    const top = Math.max(30, (h - rowH * TAB_ROWS.length - 50) / 2);
+    const bottom = top + rowH * TAB_ROWS.length;
+    const playX = gutter + (w - gutter) * 0.2;
+    const pps = Math.max(150, (w - gutter) / 4.4);           // pixels per second
+    const xOf = (dt) => playX + dt * pps;
+    const yOf = (id) => top + (TAB_ROWS.indexOf(id) + 0.5) * rowH;
+    const r = Math.min(12, rowH * 0.25);
+
+    g.save();
+    g.beginPath();
+    g.rect(gutter, 0, w - gutter, h);
+    g.clip();
+
+    g.lineWidth = 1;
+    g.strokeStyle = '#2b3040';
+    for (const id of TAB_ROWS) {
+      g.beginPath();
+      g.moveTo(gutter, yOf(id));
+      g.lineTo(w, yOf(id));
+      g.stroke();
+    }
+
+    if (game) {
+      const shift = game.offset - pos;
+      g.strokeStyle = '#222634';
+      for (const t of game.beats || []) {
+        const x = xOf(t + shift);
+        if (x < gutter || x > w) continue;
+        g.beginPath();
+        g.moveTo(x, top + rowH * 0.5);
+        g.lineTo(x, bottom - rowH * 0.5);
+        g.stroke();
+      }
+      g.font = '500 12px system-ui, sans-serif';
+      g.textAlign = 'left';
+      (game.bars || []).forEach((t, i) => {
+        const x = xOf(t + shift);
+        if (x < gutter - 40 || x > w) return;
+        g.strokeStyle = '#4a5068';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(x, top + rowH * 0.2);
+        g.lineTo(x, bottom - rowH * 0.2);
+        g.stroke();
+        g.fillStyle = '#7d8398';
+        g.fillText(String(i + 1), x + 5, top + 2);
+      });
+    }
+
+    const shown = [...this.visible(game, pos, (w - playX) / pps, (playX - gutter) / pps + 0.1)];
+
+    // notes hit together are joined by a stem, like on a staff
+    const stems = new Map();
+    for (const [n, dt] of shown) {
+      if (!TAB_ROWS.includes(n.pad)) continue;
+      const y = yOf(n.pad);
+      const s = stems.get(n.group);
+      if (s) { s.a = Math.min(s.a, y); s.b = Math.max(s.b, y); } else stems.set(n.group, { x: xOf(dt), a: y, b: y, past: dt < 0 });
+    }
+    g.lineWidth = 1.5;
+    for (const s of stems.values()) {
+      if (s.a === s.b) continue;
+      g.strokeStyle = s.past ? '#2f3445' : '#6b7188';
+      g.beginPath();
+      g.moveTo(s.x, s.a);
+      g.lineTo(s.x, s.b);
+      g.stroke();
+    }
+
+    for (const [n, dt] of shown) {
+      if (!TAB_ROWS.includes(n.pad)) continue;
+      const p = PAD[n.pad];
+      const x = xOf(dt), y = yOf(n.pad);
+      const missed = n.state === 'miss';
+      const done = n.state && n.state !== 'skip' && !missed;
+      g.globalAlpha = missed ? 0.6 : done || n.state === 'skip' ? 0.28 : 1;
+      const color = missed ? JUDGE_COLOR.miss : p.color;
+      g.strokeStyle = color;
+      g.fillStyle = color;
+      if (p.cymbal) {
+        const d = r * 0.82;
+        g.lineWidth = 3.5;
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(x - d, y - d); g.lineTo(x + d, y + d);
+        g.moveTo(x + d, y - d); g.lineTo(x - d, y + d);
+        g.stroke();
+        g.lineCap = 'butt';
+        if (n.open) {                                         // open hi-hat: left foot up
+          g.lineWidth = 2;
+          g.beginPath();
+          g.arc(x, y - r * 1.65, r * 0.42, 0, Math.PI * 2);
+          g.stroke();
+        }
+      } else {
+        g.beginPath();
+        g.arc(x, y, n.pad === 'kick' ? r * 1.08 : r, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    g.globalAlpha = 1;
+    g.restore();
+
+    // the play line, with a target on every drum's line
+    g.strokeStyle = '#e7e9f0';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(playX, top - 6);
+    g.lineTo(playX, bottom + 6);
+    g.stroke();
+    for (const id of TAB_ROWS) {
+      const p = PAD[id];
+      const glow = this.glow(id, now);
+      const missed = this.lit[id]?.name === 'miss';
+      g.lineWidth = 2.5;
+      g.strokeStyle = missed && glow ? JUDGE_COLOR.miss : p.color;
+      g.fillStyle = glow && !missed ? mix(p.color, 0.3 + 0.7 * glow) : '#12141b';
+      g.beginPath();
+      g.arc(playX, yOf(id), r * 1.45, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+
+      // the drum's name, in its LED colour
+      g.fillStyle = glow && !missed ? '#ffffff' : mix(p.color, 0.92);
+      g.font = `600 ${Math.max(12, Math.min(15, rowH * 0.3))}px system-ui, sans-serif`;
+      g.textAlign = 'right';
+      g.textBaseline = 'middle';
+      g.fillText(p.name, gutter - 14, yOf(id));
+      g.textBaseline = 'alphabetic';
+    }
+
+    // the left foot has no line of its own: it sets the hi-hat open or closed
+    const up = this.footUp(game, pos);
+    const pedal = PAD.pedal;
+    const footGlow = this.glow('pedal', now);
+    const footW = Math.min(340, w - gutter - 24);
+    const footX = gutter + (w - gutter) / 2;
+    g.lineWidth = 2;
+    g.strokeStyle = mix(pedal.color, 0.8);
+    g.fillStyle = footGlow ? mix(pedal.color, 0.3 + 0.7 * footGlow) : up ? mix(pedal.color, 0.4) : '#12141b';
+    roundRect(g, footX - footW / 2, bottom + 14, footW, 26, 13);
+    g.fill();
+    g.stroke();
+    g.fillStyle = footGlow ? '#10131a' : up ? '#ffffff' : mix(pedal.color, 0.9);
+    g.font = '600 12px system-ui, sans-serif';
+    g.textAlign = 'center';
+    const state = up === null ? '' : up ? ' UP: open hi-hat' : ' down: closed hi-hat';
+    g.fillText(`${pedal.name} · ${pedal.foot}${state}`, footX, bottom + 31);
+
+    for (const p of this.pops) {
+      if (TAB_ROWS.includes(p.pad)) this.word(p, playX, yOf(p.pad) - r * 1.9, now);
+    }
   }
 
   // ---- drums page -----------------------------------------------------------
