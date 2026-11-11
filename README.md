@@ -39,11 +39,25 @@ The site's [kit map](https://1vogada.github.io/airdrums/#/map) shows where each 
 | Snare | yellow | red |
 | Floor Drum | purple | green tom |
 | Bass drum (right foot) | (white here) | kick |
-| Hi-hat pedal (left foot) | (green here) | none yet |
+| Hi-hat pedal (left foot) | (green here) | open / closed hi-hat, where the chart says |
 
 The left foot is the hi-hat pedal: flat makes the sticks' hi-hat closed, raised
-makes it open, and putting it down plays the hi-hat cymbal. Charts only write
-bass drum hits, so the left foot has no notes of its own yet (see Next).
+makes it open, and putting it down plays the hi-hat cymbal.
+
+### Which drum a note really is
+
+A chart's lanes are a game's simplification. An open hi-hat is often written on
+the "ride" lane, and a fast hi-hat run on the snare lane so two hands can play
+it. Rock Band's own charts (charter "Harmonix") also carry the notes that drive
+the on-screen drummer: what is hit on a real kit, and when the hi-hat is open.
+Where a chart has those, the site goes by them and prefers that chart:
+
+- every hit lands on the drum it really is;
+- an open hi-hat is drawn hollow (Colors) or dashed (Drums), and the left foot
+  pad says up or down.
+
+Other charts fall back to the lanes (table above). `tests/inspect_chart.mjs`
+shows what each chart of a song says, section by section.
 
 ## Setup
 
@@ -65,13 +79,17 @@ Open **Setup** on the site.
 A chart is timed to its own copy of the song, which can start earlier or later
 than Spotify's, and a Bluetooth speaker adds its own delay.
 
-- When both the chart and the lyrics have line timings, the site starts from
-  the gap between them (rough, about 0.2 s).
+- **Auto.** The chart knows when each line is sung and so do the lyrics: the
+  gap between them is how far apart the two copies are (game charts often
+  start 2 to 5 seconds late). Good to about 0.2 s, since lyric timings are
+  hand-made. Charts without vocals can't be lined up this way and show
+  "not synced".
 - **Sync by ear** listens to the song through the mic for 12 seconds and lines
   the notes up with the drums it hears.
 - **−** and **+** (or `[` and `]`, with Shift for bigger steps) nudge by hand.
 
-The result is remembered per song and chart.
+Your tuning sits on top of the automatic line-up and is remembered per song and
+chart. Click the number to drop it and go back to automatic.
 
 ## Limits
 
@@ -84,10 +102,11 @@ The result is remembered per song and chart.
 
 ## Next
 
-- Left foot: show when the hi-hat should be open or closed, and teach the mic
-  the open hi-hat and the pedal "chick" as their own sounds. Clone Hero charts
-  don't mark open hi-hats, so this needs another source or a guess from the
-  pattern.
+- Left foot: teach the mic the open hi-hat and the pedal "chick" as their own
+  sounds, and score them. Only Rock Band's own charts say when the hi-hat is
+  open.
+- Line-up: for a chart without vocals, borrow the line-up of another chart of
+  the same song by matching their drum patterns.
 - Mic: sync by ear and scoring are only tested with a fake microphone so far.
 - Songs with no chart: fall back to a generated beat.
 

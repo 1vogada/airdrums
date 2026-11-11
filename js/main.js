@@ -4,7 +4,7 @@ import { PADS, PAD, KEY_TO_PAD } from './kit.js';
 import * as store from './store.js';
 import * as spotify from './spotify.js';
 import { Follow, ManualClock } from './spotify.js';
-import { findCharts, searchCharts, loadChart, lyricShift } from './charts.js';
+import { findCharts, searchCharts, loadChart, lyricShift, fit } from './charts.js';
 import { syncedLyrics } from './lyrics.js';
 import { Mic } from './mic.js';
 import { Game, listenShift } from './game.js';
@@ -28,6 +28,7 @@ let loading = 0;                        // bumps on every load, so a slow one ca
 let listening = null;                   // { until, heard: [] } while syncing by ear
 const demoLink = new URLSearchParams(location.search).get('demo');   // ?demo=song: play it without Spotify
 let roughShift = null;                  // what the lyrics say the chart is off by
+let fine = 0;                           // your own tuning on top of that, kept per song and chart
 
 // ---- routing ----------------------------------------------------------------
 
@@ -110,9 +111,10 @@ async function loadPicked(mine = ++loading) {
     parsed = got;
     game = new Game(parsed.notes);
     fillDifficulty();
-    const saved = store.get(`off.${song.id}.${chart.md5}`);
-    game.offset = saved ?? 0;
-    if (saved === null) applyRough();
+    roughShift = null;
+    fine = store.get(fineKey(), 0);
+    game.offset = fine;
+    applyRough();
     game.reset(clock.position());
     showOffset();
     notice(clock instanceof ManualClock && !clock.playing ? 'Press Enter when your song starts.' : '');
@@ -121,12 +123,15 @@ async function loadPicked(mine = ++loading) {
   }
 }
 
-// The lyrics and the chart both know when each line is sung: start the notes
-// off by the gap between them (unless you've already set the sync yourself).
+const fineKey = () => `fine.${song.id}.${chart.md5}`;
+
+// The lyrics and the chart both know when each line is sung: the gap between
+// them is how far the chart's copy of the song is from Spotify's. Your own
+// tuning goes on top of it.
 function applyRough() {
-  if (!game || !lyrics || !parsed || store.get(`off.${song.id}.${chart.md5}`) !== null) return;
-  roughShift = lyricShift(parsed.phrases, lyrics.map((l) => l.t));
-  if (roughShift !== null) { game.offset = roughShift; game.reset(clock.position()); showOffset(); }
+  if (!game || !lyrics || !parsed) return;
+  roughShift = lyricShift(parsed.phrases, lyrics.filter((l) => l.text).map((l) => l.t));
+  if (roughShift !== null) { game.offset = roughShift + fine; game.reset(clock.position()); showOffset(); }
 }
 
 function fillCharts() {
@@ -134,7 +139,9 @@ function fillCharts() {
   sel.replaceChildren(...charts.map((c) => {
     const o = document.createElement('option');
     o.value = c.md5;
-    o.textContent = `${c.charter || 'unknown'} · ${clockTime(c.length)}${c.drumType === 1 ? '' : ' · simple'}`;
+    const version = /live|acoustic|demo|remix|cover/i.exec(c.name);       // not the recording you're hearing
+    o.textContent = `${c.charter || 'unknown'} · ${clockTime(c.length)}${c.drumType === 1 ? '' : ' · simple'}`
+      + (version ? ` · ${version[0].toLowerCase()} version` : '');
     return o;
   }));
   sel.disabled = charts.length < 2;
@@ -156,15 +163,19 @@ const clockTime = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).pad
 
 function showOffset() {
   const ms = Math.round((game?.offset || 0) * 1000);
-  $('offset').textContent = `${ms > 0 ? '+' : ''}${ms} ms`;
+  const how = !game ? '' : fine ? 'tuned' : roughShift !== null ? 'auto' : 'not synced';
+  $('offset').textContent = `${ms > 0 ? '+' : ''}${ms} ms${how ? ` · ${how}` : ''}`;
 }
 
-function nudge(seconds) {
+function setFine(seconds) {
   if (!game) return;
-  game.offset += seconds;
-  store.set(`off.${song.id}.${chart.md5}`, game.offset);
+  fine = seconds;
+  if (fine) store.set(fineKey(), fine); else store.del(fineKey());
+  game.offset = (roughShift ?? 0) + fine;
   showOffset();
 }
+
+const nudge = (seconds) => setFine(fine + seconds);
 
 function tick() {
   frame = requestAnimationFrame(tick);
@@ -238,14 +249,12 @@ function finishListen() {
   const { heard } = listening;
   listening = null;
   $('listen').disabled = false;
-  const wide = roughShift === null && store.get(`off.${song.id}.${chart.md5}`) === null;
+  const wide = roughShift === null && !fine;
   const shift = game ? listenShift(game.groupTimes, heard, game.offset, wide ? 3 : 1) : null;
   if (shift === null) {
     notice(`Couldn't make out the drums (${heard.length} sounds heard). Turn the music up or move the mic closer, or nudge with − and +.`);
   } else {
-    game.offset = shift;
-    store.set(`off.${song.id}.${chart.md5}`, shift);
-    showOffset();
+    setFine(shift - (roughShift ?? 0));
     notice('');
   }
   if (game) game.reset(clock.position());
@@ -257,6 +266,7 @@ $('chartPick').addEventListener('change', (e) => {
   loadPicked();
 });
 $('difficulty').addEventListener('change', (e) => { store.set('difficulty', e.target.value); loadPicked(); });
+$('offset').addEventListener('click', () => { setFine(0); if (game) game.reset(clock.position()); });
 $('offDown').addEventListener('click', (e) => nudge(e.shiftKey ? -0.05 : -0.01));
 $('offUp').addEventListener('click', (e) => nudge(e.shiftKey ? 0.05 : 0.01));
 $('listen').addEventListener('click', startListen);
@@ -336,7 +346,10 @@ async function demo(query, at) {
   try {
     const found = await searchCharts(query);
     if (!found.length) { notice('No drum chart found for that.'); return; }
-    await playManual(found[0]);
+    // of the versions of the first song found, the one the site would pick itself
+    const like = { title: found[0].name, artist: found[0].artist };
+    const ranked = found.map((c) => ({ ...c, fit: fit(c, like) })).sort((a, b) => b.fit - a.fit);
+    await playManual(ranked[0]);
     if (game) { clock.set(at, true); notice(''); }
   } catch (e) {
     notice(e.message);

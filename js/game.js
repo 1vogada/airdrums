@@ -11,7 +11,8 @@ const CHORD = 0.02;                               // notes this close are hit to
 export class Game {
   constructor(notes) {
     // notes: [{ t, pad }] sorted by t, in the chart's own time
-    this.notes = notes.map((n) => ({ t: n.t, pad: n.pad, state: null, group: 0 }));
+    this.notes = notes.map((n) => ({ t: n.t, pad: n.pad, open: Boolean(n.open), state: null, group: 0 }));
+    this.knowsOpen = this.notes.some((n) => n.open);   // the chart says when the hi-hat is open
     let g = -1, last = -Infinity;
     for (const n of this.notes) {
       if (n.t - last > CHORD) { g++; last = n.t; }

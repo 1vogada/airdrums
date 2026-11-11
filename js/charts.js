@@ -37,6 +37,7 @@ export async function searchCharts(query) {
     charter: c.charter || '',
     length: (c.song_length || 0) / 1000,
     drumType: c.notesData?.drumType ?? 0,
+    lyrics: Boolean(c.notesData?.hasLyrics),
     delay: (c.delay || 0) / 1000 + (c.chart_offset || 0) / 1000,
     notes: Math.max(0, ...(c.notesData?.noteCounts || []).filter((n) => n.instrument === 'drums').map((n) => n.count)),
   }));
@@ -56,8 +57,12 @@ export function fit(chart, song) {
     score += off < 3 ? 30 : off < 8 ? 15 : off < 20 ? 0 : -25;
   }
   if (chart.drumType === 1) score += 15;                    // cymbals and toms told apart
-  if (/harmonix|neversoft/i.test(chart.charter)) score += 5; // official game charts
+  if (chart.lyrics) score += 10;                            // can be lined up with the song by its lyrics
+  if (/harmonix/i.test(chart.charter)) score += 35;         // Rock Band's own charts also say what's hit on a real kit
+  else if (/neversoft/i.test(chart.charter)) score += 3;    // Guitar Hero's own charts
   if (/\b(2x|double)\b/i.test(chart.name)) score -= 3;
+  const other = /\b(live|acoustic|demo|remix|cover)\b/i;    // another recording: its drums won't line up
+  if (other.test(chart.name) !== other.test(song.title || '')) score -= 45;
   return score;
 }
 
@@ -122,36 +127,43 @@ export async function loadChart(chart, difficulty = 'expert') {
   return parsed;
 }
 
-// The chart was timed to its own copy of the song, which can start a little
-// earlier or later than Spotify's. Both the chart (vocal phrases) and the
-// synced lyrics know when each line starts: the shift that lines up the most
-// of them is how far apart the two copies are. Returns seconds to add to the
-// chart's times, or null when there's no clear answer.
+// The chart was timed to its own copy of the song, which can start earlier or
+// later than Spotify's (game versions often have a few seconds of lead-in).
+// Both the chart (vocal phrases) and the synced lyrics know when each line
+// starts: the shift that puts the most lyric lines on a phrase is how far
+// apart the two copies are. Returns seconds to add to the chart's times, or
+// null when there's no clear answer. Good to about a fifth of a second - the
+// lyric timings are hand-made - so it gets the notes onto the right beat, not
+// onto the exact millisecond.
 export function lyricShift(phrases, lineTimes, maxShift = 20) {
-  if (phrases.length < 6 || lineTimes.length < 6) return null;
-  const BIN = 0.1, NEAR = 0.2;
-  const votes = new Map();
-  for (const p of phrases) {
-    for (const l of lineTimes) {
-      const d = l - p;
-      if (Math.abs(d) <= maxShift) votes.set(Math.round(d / BIN), (votes.get(Math.round(d / BIN)) || 0) + 1);
+  if (phrases.length < 5 || lineTimes.length < 5) return null;
+  const NEAR = 0.45, STEP = 0.05;
+  const ps = [...phrases].sort((a, b) => a - b);
+  const gap = (x) => {                                      // x minus the nearest phrase
+    let lo = 0, hi = ps.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ps[mid] < x) lo = mid + 1; else hi = mid;
     }
+    const a = x - ps[lo], b = lo > 0 ? x - ps[lo - 1] : Infinity;
+    return Math.abs(a) < Math.abs(b) ? a : b;
+  };
+  let best = null;
+  const tries = [];
+  for (let d = -maxShift; d <= maxShift; d += STEP) {
+    let n = 0, err = 0;
+    for (const l of lineTimes) {
+      const g = Math.abs(gap(l - d));
+      if (g <= NEAR) { n++; err += g; }
+    }
+    tries.push({ d, n, err });
+    if (!best || n > best.n || (n === best.n && err < best.err)) best = { d, n, err };
   }
-  const around = (k) => (votes.get(k - 1) || 0) + (votes.get(k) || 0) + (votes.get(k + 1) || 0);
-  let best = null, bestN = 0;
-  for (const k of votes.keys()) {
-    const n = around(k);
-    if (n > bestN || (n === bestN && Math.abs(k) < Math.abs(best))) { best = k; bestN = n; }
-  }
-  let second = 0;                                           // the best of the shifts that aren't the same one
-  for (const k of votes.keys()) if (Math.abs(k - best) > 4) second = Math.max(second, around(k));
-  const enough = Math.max(5, Math.min(phrases.length, lineTimes.length) * 0.35);
-  if (best === null || bestN < enough || bestN < second * 1.4) return null;
-  // the middle of the matched pairs, finer than the bin
-  const diffs = [];
-  for (const p of phrases) {
-    for (const l of lineTimes) if (Math.abs(l - p - best * BIN) <= NEAR) diffs.push(l - p);
-  }
-  diffs.sort((a, b) => a - b);
-  return diffs.length ? diffs[diffs.length >> 1] : best * BIN;
+  // songs repeat, so a shift of a whole line also fits some lines: the right
+  // one has to fit clearly more of them than any other
+  const rival = Math.max(0, ...tries.filter((t) => Math.abs(t.d - best.d) > 1).map((t) => t.n));
+  const enough = Math.max(5, Math.min(phrases.length, lineTimes.length) * 0.5);
+  if (best.n < enough || best.n < rival + 2) return null;
+  const gaps = lineTimes.map((l) => gap(l - best.d)).filter((g) => Math.abs(g) <= NEAR).sort((a, b) => a - b);
+  return best.d + gaps[gaps.length >> 1];
 }

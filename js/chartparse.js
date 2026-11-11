@@ -57,12 +57,14 @@ function finish(hits, phrases, clock, drumType, extra) {
   const seen = new Set();
   const notes = [];
   for (const h of hits) {
-    const pad = laneToPad(h.lane, h.cymbal, drumType);
+    const pad = h.pad || laneToPad(h.lane, h.cymbal, drumType);
     if (!pad) continue;
     const key = h.tick + pad;
     if (seen.has(key)) continue;              // two chart lanes landing on one pad
     seen.add(key);
-    notes.push({ t: clock(h.tick), pad });
+    const note = { t: clock(h.tick), pad };
+    if (h.open && pad === 'hihat') note.open = true;
+    notes.push(note);
   }
   notes.sort((a, b) => a.t - b.t);
   return { notes, phrases: phrases.map(clock).sort((a, b) => a - b), ...extra };
@@ -130,6 +132,77 @@ export function parseChartText(text, wanted = 'expert') {
 
 const MIDI_BASE = { expert: 96, hard: 84, medium: 72, easy: 60 };
 
+// Rock Band charts carry a second set of notes that drive the on-screen
+// drummer: what is really hit on a real kit, hand by hand. The game lanes are
+// a simplification (an open hi-hat is often written on the "ride" lane, a
+// floor tom groove on the "hi-hat" lane); these say which drum it really is.
+const REAL = {
+  24: 'kick',
+  26: 'snare', 27: 'snare', 28: 'snare', 29: 'snare',
+  30: 'hihat', 31: 'hihat',
+  34: 'crash', 35: 'crash', 36: 'crash', 37: 'crash', 38: 'crash', 39: 'crash',
+  40: 'crash', 41: 'crash', 44: 'crash', 45: 'crash',
+  42: 'ride', 43: 'ride',
+  46: 'tom', 47: 'tom', 48: 'tom', 49: 'tom',
+  50: 'floor', 51: 'floor',
+};
+const HAT_OPEN = 25;                                  // held while the hi-hat is open
+const HAND_ORDER = ['snare', 'hihat', 'tom', 'ride', 'floor', 'crash'];   // red, then yellow-ish to green-ish
+const CYMBALS = ['hihat', 'ride', 'crash'];
+const TOMS = ['tom', 'floor'];
+
+// The real-kit notes of a drum track: tick -> pads, and when the hi-hat is open.
+function realKit(drums, division) {
+  const ticks = [], pads = [];
+  for (const e of drums.on) {
+    const pad = REAL[e.note];
+    if (!pad) continue;
+    if (ticks.length && ticks[ticks.length - 1] === e.tick) pads[pads.length - 1].add(pad);
+    else { ticks.push(e.tick); pads.push(new Set([pad])); }
+  }
+  const open = [];
+  const offs = drums.off.filter((e) => e.note === HAT_OPEN).map((e) => e.tick);
+  for (const e of drums.on) if (e.note === HAT_OPEN) open.push([e.tick, offs.find((o) => o > e.tick) ?? e.tick + division / 4]);
+  const NEAR = Math.max(1, Math.round(division / 16));        // the two sets aren't always on the same tick
+  const at = (tick) => {
+    let lo = 0, hi = ticks.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (ticks[mid] < tick - NEAR) lo = mid + 1; else hi = mid;
+    }
+    const out = new Set();
+    for (; lo < ticks.length && ticks[lo] <= tick + NEAR; lo++) for (const p of pads[lo]) out.add(p);
+    return out;
+  };
+  return { count: ticks.length, at, isOpen: (tick) => open.some(([a, z]) => tick >= a && tick < z) };
+}
+
+// Give the hits written at one moment their real drums. `hits` are the hand
+// ones (red, yellow, blue, green: lanes 1..4) at one tick, `real` the pads
+// the real-kit notes have there. Each hit first looks for a real drum of its
+// own kind (red: snare; a cymbal lane: a cymbal; a tom lane: a tom), then
+// takes what's left. So a fast hi-hat run written on the red lane to make it
+// playable in the game comes out as the hi-hat it is.
+function assignReal(hits, real, split) {
+  const pads = HAND_ORDER.filter((p) => real.has(p));
+  if (!pads.length) return;
+  hits.sort((a, b) => a.lane - b.lane);
+  const used = new Set();
+  const give = (h, order) => {
+    const pad = order.find((p) => real.has(p) && !used.has(p));
+    if (pad) { h.pad = pad; used.add(pad); }
+    return Boolean(pad);
+  };
+  const rest = [];
+  for (const h of hits) {
+    const own = h.lane === 1 ? ['snare'] : !split ? [] : h.cymbal ? CYMBALS : TOMS;
+    if (!give(h, own)) rest.push(h);
+  }
+  // nothing of its own kind was hit: it's one of the drums that were (two
+  // lanes on one real drum come out as a single hit)
+  for (const h of rest) if (!give(h, HAND_ORDER)) h.pad = pads[pads.length - 1];
+}
+
 function readMidi(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (String.fromCharCode(...bytes.subarray(0, 4)) !== 'MThd') throw new Error('not a midi file');
@@ -185,7 +258,7 @@ export function parseMidi(bytes, wanted = 'expert', drumTypeHint = null) {
     ? phraseStarts([...new Set(vocals.on.filter((e) => e.note === 105 || e.note === 106).map((e) => e.tick))], vocals.lyrics)
     : [];
   const hits = [];
-  let available = [], difficulty, drumType = 0;
+  let available = [], difficulty, drumType = 0, real = false;
   if (drums) {
     available = DIFFICULTIES.filter((d) => drums.on.some((e) => e.note >= MIDI_BASE[d] && e.note <= MIDI_BASE[d] + 5));
     difficulty = available.includes(wanted) ? wanted : available[0];
@@ -209,10 +282,26 @@ export function parseMidi(bytes, wanted = 'expert', drumTypeHint = null) {
         const isTom = lane >= 2 && lane <= 4 && tomSpans[lane].some(([a, z]) => e.tick >= a && e.tick < Math.max(z, a + 1));
         hits.push({ tick: e.tick, lane, cymbal: !isTom });
       }
+      // where the chart also says what's hit on a real kit, go by that
+      const kit = realKit(drums, division);
+      const moments = new Map();
+      for (const h of hits) {
+        if (!moments.has(h.tick)) moments.set(h.tick, []);
+        moments.get(h.tick).push(h);
+      }
+      let covered = 0;
+      for (const tick of moments.keys()) if (kit.at(tick).size) covered++;
+      if (kit.count && covered >= moments.size * 0.6) {
+        real = true;
+        for (const [tick, group] of moments) {
+          assignReal(group.filter((h) => h.lane >= 1 && h.lane <= 4), kit.at(tick), drumType === 1);
+          if (kit.isOpen(tick)) for (const h of group) h.open = true;
+        }
+      }
     }
   }
   return finish(hits, phrases, tempoClock(division, tempos), drumType, {
-    difficulty, available, drumType, offset: 0, format: 'mid',
+    difficulty, available, drumType, offset: 0, format: 'mid', real,
   });
 }
 

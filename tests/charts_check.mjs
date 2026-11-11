@@ -9,6 +9,9 @@ const SONGS = [
   { title: 'Smells Like Teen Spirit', artist: 'Nirvana', duration: 301 },
   { title: 'Billie Jean', artist: 'Michael Jackson', duration: 294 },
   { title: 'Levitating', artist: 'Dua Lipa', duration: 203 },
+  { title: 'Du Hast', artist: 'Rammstein', duration: 235 },
+  { title: 'Back In Black', artist: 'AC/DC', duration: 255 },
+  { title: 'Chop Suey!', artist: 'System Of A Down', duration: 210 },
 ];
 
 let failed = 0;
@@ -26,10 +29,10 @@ for (const song of SONGS) {
     let shift = 'no lyrics';
     const lyr = await syncedLyrics(song).catch(() => null);
     if (lyr) {
-      const s = lyricShift(parsed.phrases, lyr.map((l) => l.t));
+      const s = lyricShift(parsed.phrases, lyr.filter((l) => l.text).map((l) => l.t));
       shift = s === null ? `no clear shift (${parsed.phrases.length} phrases, ${lyr.length} lines)` : `shift ${s.toFixed(3)}s`;
     }
-    console.log(`${sane ? 'ok' : 'BAD'}  ${c.artist} - ${c.name} | ${parsed.format} ${parsed.difficulty} of [${parsed.available}] `
+    console.log(`${sane ? 'ok' : 'BAD'}  ${c.artist} - ${c.name} | by ${c.charter}, real kit ${parsed.real ? 'yes' : 'no'}, open hats ${parsed.notes.filter((n) => n.open).length} | ${parsed.format} ${parsed.difficulty} of [${parsed.available}] `
       + `| type ${parsed.drumType} | ${parsed.notes.length} notes, last at ${last.toFixed(1)}s of ${c.length.toFixed(0)}s `
       + `| ${Object.entries(count).map(([k, v]) => `${k} ${v}`).join(', ')} | ${shift} | ${charts.length} candidates, fit ${c.fit}`);
     if (!sane) failed++;

@@ -82,6 +82,16 @@ export class Stage {
     }
   }
 
+  // Whether the left foot should be up (open hi-hat) right now: what the next
+  // hi-hat note says. null when the chart doesn't say open from closed.
+  footUp(game, pos) {
+    if (!game?.knowsOpen) return null;
+    for (const [n, dt] of this.visible(game, pos, 2, 0.12)) {
+      if (n.pad === 'hihat' && dt > -0.12) return n.open;
+    }
+    return false;
+  }
+
   glow(pad, now) {
     const l = this.lit[pad];
     if (!l) return 0;
@@ -107,14 +117,16 @@ export class Stage {
     const R = Math.min(w / 10, h / 7.6);
     const LEAD = 0.9;
     const at = (id) => [KIT_AT[id][0] * w, KIT_AT[id][1] * h];
+    const up = this.footUp(game, pos);
 
     for (const p of PADS) {
       const [x, y] = at(p.id);
       const glow = this.glow(p.id, now);
       const missed = this.lit[p.id]?.name === 'miss';
+      const lifted = p.id === 'pedal' && up;
       g.lineWidth = 4;
       g.strokeStyle = p.color;
-      g.fillStyle = glow && !missed ? mix(p.color, 0.25 + 0.6 * glow) : '#171a22';
+      g.fillStyle = glow && !missed ? mix(p.color, 0.25 + 0.6 * glow) : lifted ? mix(p.color, 0.4) : '#171a22';
       if (p.foot) {                                          // the pedals are pills, under the kit
         roundRect(g, x - R * 1.3, y - R * 0.38, R * 2.6, R * 0.76, R * 0.38);
       } else {
@@ -146,7 +158,8 @@ export class Stage {
       g.fillText(p.name, x, p.cymbal ? y + R * 0.55 : p.foot ? y - R * 0.1 : y);
       if (p.foot) {                                          // which foot plays it
         g.font = `500 ${Math.max(10, R * 0.17)}px system-ui, sans-serif`;
-        g.fillText(p.foot, x, y + R * 0.17);
+        const foot = p.id === 'pedal' && up !== null ? `${p.foot} ${up ? 'UP: open' : 'down: closed'}` : p.foot;
+        g.fillText(foot, x, y + R * 0.17);
       }
       g.textBaseline = 'alphabetic';
     }
@@ -169,7 +182,9 @@ export class Stage {
       } else {
         g.arc(x, y, R * (1 + f * 0.95), 0, Math.PI * 2);
       }
+      if (n.open) g.setLineDash([R * 0.16, R * 0.12]);        // open hi-hat: left foot up
       g.stroke();
+      g.setLineDash([]);
       g.globalAlpha = 1;
     }
 
@@ -208,9 +223,17 @@ export class Stage {
     for (const [n, dt] of shown) {
       if (n.pad === 'kick' || (n.state && n.state !== 'miss')) continue;
       g.globalAlpha = n.state === 'miss' ? 0.25 : 1;
-      g.fillStyle = PAD[n.pad].color;
       roundRect(g, laneX(n.pad) + lane * 0.11, yOf(dt) - noteH / 2, lane * 0.78, noteH, noteH / 2);
-      g.fill();
+      if (n.open) {                                           // open hi-hat: hollow, left foot up
+        g.fillStyle = '#12141b';
+        g.fill();
+        g.lineWidth = 3;
+        g.strokeStyle = PAD[n.pad].color;
+        g.stroke();
+      } else {
+        g.fillStyle = PAD[n.pad].color;
+        g.fill();
+      }
     }
     g.globalAlpha = 1;
 
@@ -237,19 +260,22 @@ export class Stage {
     // the two feet, under the lanes: left the hi-hat pedal, right the bass drum
     const footY = hitY + noteH * 0.9 + 32;
     const footX = { pedal: x0 + width * 0.25, kick: x0 + width * 0.75 };
+    const up = this.footUp(game, pos);
     for (const id of ['pedal', 'kick']) {
       const p = PAD[id];
       const glow = this.glow(id, now);
+      const lifted = id === 'pedal' && up;
       g.lineWidth = 2;
       g.strokeStyle = mix(p.color, 0.8);
-      g.fillStyle = glow ? mix(p.color, 0.3 + 0.7 * glow) : '#12141b';
+      g.fillStyle = glow ? mix(p.color, 0.3 + 0.7 * glow) : lifted ? mix(p.color, 0.4) : '#12141b';
       roundRect(g, footX[id] - width * 0.22, footY, width * 0.44, 24, 12);
       g.fill();
       g.stroke();
-      g.fillStyle = glow ? '#10131a' : mix(p.color, 0.9);
+      g.fillStyle = glow ? '#10131a' : lifted ? '#ffffff' : mix(p.color, 0.9);
       g.font = '600 12px system-ui, sans-serif';
       g.textAlign = 'center';
-      g.fillText(`${p.name} · ${p.foot}${id === 'kick' ? ' · the wide bar' : ''}`, footX[id], footY + 16);
+      const state = id === 'kick' ? ' · the wide bar' : up === null ? '' : up ? ' UP: open hi-hat' : ' down: closed hi-hat';
+      g.fillText(`${p.name} · ${p.foot}${state}`, footX[id], footY + 16);
     }
 
     for (const p of this.pops) {
