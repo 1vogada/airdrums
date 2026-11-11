@@ -33,7 +33,11 @@ Two pages, same notes:
 | Hi-Hat | green | yellow cymbal |
 | Snare | yellow | red |
 | Floor Drum | purple | green tom |
-| Bass pedal | (white here) | kick |
+| Bass drum (right foot) | (white here) | kick |
+
+The left foot is the hi-hat pedal: flat makes the sticks' hi-hat closed, raised
+makes it open, and putting it down plays the hi-hat cymbal. Charts only write
+bass drum hits, so the left foot has no notes of its own yet (see Next).
 
 ## Setup
 
@@ -71,6 +75,15 @@ The result is remembered per song and chart.
   ones marked "simple" don't tell cymbals from toms.
 - The mic can tell that you hit and roughly which drum, not which stick.
 - Restart needs Spotify Premium.
+
+## Next
+
+- Left foot: show when the hi-hat should be open or closed, and teach the mic
+  the open hi-hat and the pedal "chick" as their own sounds. Clone Hero charts
+  don't mark open hi-hats, so this needs another source or a guess from the
+  pattern.
+- Mic: sync by ear and scoring are only tested with a fake microphone so far.
+- Songs with no chart: fall back to a generated beat.
 
 ## Where the data comes from
 

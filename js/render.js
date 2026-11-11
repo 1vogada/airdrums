@@ -143,7 +143,11 @@ export class Stage {
       g.font = `600 ${Math.max(12, R * 0.26)}px system-ui, sans-serif`;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.fillText(p.name, x, p.cymbal ? y + R * 0.55 : y);
+      g.fillText(p.name, x, p.cymbal ? y + R * 0.55 : p.foot ? y - R * 0.1 : y);
+      if (p.foot) {                                          // which foot plays it
+        g.font = `500 ${Math.max(10, R * 0.17)}px system-ui, sans-serif`;
+        g.fillText(p.foot, x, y + R * 0.17);
+      }
       g.textBaseline = 'alphabetic';
     }
 
@@ -233,7 +237,7 @@ export class Stage {
     g.fillStyle = mix(PAD.kick.color, 0.6);
     g.font = '600 12px system-ui, sans-serif';
     g.textAlign = 'center';
-    g.fillText('bass pedal = the wide bar', w / 2, hitY + noteH * 0.9 + 40);
+    g.fillText('bass drum (right foot) = the wide bar', w / 2, hitY + noteH * 0.9 + 40);
 
     for (const p of this.pops) {
       const x = p.pad === 'kick' ? w / 2 : laneX(p.pad) + lane / 2;

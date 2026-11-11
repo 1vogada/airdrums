@@ -1,5 +1,11 @@
 // The Fresh 'n Rebel Air Drums kit: six stick zones (2 rows x 3 columns) plus
-// the bass pedal. Colours are the stick LED colours from the manual.
+// the two foot pedals. Colours are the stick LED colours from the manual.
+//
+// Feet (manual, page 2): the right foot is the bass drum (raise it, then put
+// it down flat). The left foot is the hi-hat pedal: putting it down plays the
+// hi-hat cymbal, and where it rests picks the sticks' hi-hat sound - flat is
+// closed, raised is open. Charts only write bass drum hits, so the left foot
+// has no notes of its own yet.
 
 export const PADS = [
   { id: 'crash', name: 'Crash',      short: 'CR', color: '#6ec6f5', row: 0, col: 0, key: 'q', cymbal: true },
@@ -8,7 +14,7 @@ export const PADS = [
   { id: 'hihat', name: 'Hi-Hat',     short: 'HH', color: '#35b558', row: 1, col: 0, key: 'a', cymbal: true },
   { id: 'snare', name: 'Snare',      short: 'SN', color: '#f5d90a', row: 1, col: 1, key: 's' },
   { id: 'floor', name: 'Floor Drum', short: 'FL', color: '#7a80f0', row: 1, col: 2, key: 'd' },
-  { id: 'kick',  name: 'Bass pedal', short: 'BD', color: '#e9e9ee', row: 2, col: 1, key: ' ' },
+  { id: 'kick',  name: 'Bass drum',  short: 'BD', color: '#e9e9ee', row: 2, col: 1, key: ' ', foot: 'right foot' },
 ];
 
 export const PAD = Object.fromEntries(PADS.map((p) => [p.id, p]));
