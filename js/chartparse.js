@@ -1,0 +1,224 @@
+// Turns a Clone Hero drum chart (notes.chart or notes.mid) into a flat list of
+// timed hits on the Air Drums kit: [{ t: seconds, pad: 'snare' | ... }].
+
+export const DIFFICULTIES = ['expert', 'hard', 'medium', 'easy'];
+
+// Chart lanes: 0 kick, 1 red, 2 yellow, 3 blue, 4 green (4-lane) / orange (5-lane), 5 green (5-lane)
+function laneToPad(lane, cymbal, drumType) {
+  if (lane === 0) return 'kick';
+  if (lane === 1) return 'snare';
+  if (drumType === 2) {                       // five lane: red, yellow cym, blue tom, orange cym, green tom
+    return { 2: 'hihat', 3: 'tom', 4: 'crash', 5: 'floor' }[lane];
+  }
+  if (drumType === 1) {                       // four lane with cymbals marked
+    if (lane === 2) return cymbal ? 'hihat' : 'tom';
+    if (lane === 3) return cymbal ? 'ride' : 'tom';
+    if (lane === 4) return cymbal ? 'crash' : 'floor';
+  }
+  // four lane, nothing says cymbal or tom: the usual reading
+  return { 2: 'hihat', 3: 'tom', 4: 'crash' }[lane];
+}
+
+// ---- tempo map ------------------------------------------------------------
+
+function tempoClock(resolution, tempos) {
+  // tempos: [{ tick, usPerBeat }] sorted; returns tick -> seconds
+  const t = tempos.length && tempos[0].tick === 0 ? tempos : [{ tick: 0, usPerBeat: 500000 }, ...tempos];
+  const marks = [];
+  let sec = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (i > 0) sec += ((t[i].tick - t[i - 1].tick) / resolution) * (t[i - 1].usPerBeat / 1e6);
+    marks.push({ tick: t[i].tick, sec, usPerBeat: t[i].usPerBeat });
+  }
+  return (tick) => {
+    let lo = 0, hi = marks.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (marks[mid].tick <= tick) lo = mid; else hi = mid - 1;
+    }
+    const m = marks[lo];
+    return m.sec + ((tick - m.tick) / resolution) * (m.usPerBeat / 1e6);
+  };
+}
+
+// Where each sung line starts: the first syllable at or after each phrase marker.
+function phraseStarts(marks, sung) {
+  marks.sort((a, b) => a - b);
+  sung.sort((a, b) => a - b);
+  const out = [];
+  marks.forEach((m, i) => {
+    const first = sung.find((t) => t >= m);
+    if (first !== undefined && (i + 1 >= marks.length || first < marks[i + 1])) out.push(first);
+  });
+  return out;
+}
+
+function finish(hits, phrases, clock, drumType, extra) {
+  const seen = new Set();
+  const notes = [];
+  for (const h of hits) {
+    const pad = laneToPad(h.lane, h.cymbal, drumType);
+    if (!pad) continue;
+    const key = h.tick + pad;
+    if (seen.has(key)) continue;              // two chart lanes landing on one pad
+    seen.add(key);
+    notes.push({ t: clock(h.tick), pad });
+  }
+  notes.sort((a, b) => a.t - b.t);
+  return { notes, phrases: phrases.map(clock).sort((a, b) => a - b), ...extra };
+}
+
+// ---- .chart ---------------------------------------------------------------
+
+const CHART_SECTION = { expert: 'ExpertDrums', hard: 'HardDrums', medium: 'MediumDrums', easy: 'EasyDrums' };
+
+export function parseChartText(text, wanted = 'expert') {
+  const sections = {};
+  let name = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('[')) { name = line.slice(1, line.indexOf(']')); sections[name] = []; continue; }
+    if (line === '{' || line === '}' || !name) continue;
+    sections[name].push(line);
+  }
+  const song = {};
+  for (const l of sections.Song || []) {
+    const i = l.indexOf('=');
+    if (i > 0) song[l.slice(0, i).trim()] = l.slice(i + 1).trim().replace(/^"|"$/g, '');
+  }
+  const resolution = Number(song.Resolution) || 192;
+  const tempos = [];
+  for (const l of sections.SyncTrack || []) {
+    const m = /^(\d+)\s*=\s*B\s+(\d+)/.exec(l);
+    if (m && Number(m[2]) > 0) tempos.push({ tick: Number(m[1]), usPerBeat: 6e10 / Number(m[2]) });
+  }
+  tempos.sort((a, b) => a.tick - b.tick);
+  const marks = [], sung = [];
+  for (const l of sections.Events || []) {
+    const m = /^(\d+)\s*=\s*E\s+"(phrase_start|lyric )/.exec(l);
+    if (m) (m[2] === 'phrase_start' ? marks : sung).push(Number(m[1]));
+  }
+  const phrases = phraseStarts(marks, sung);
+  const available = DIFFICULTIES.filter((d) => (sections[CHART_SECTION[d]] || []).some((l) => /=\s*N\s/.test(l)));
+  const difficulty = available.includes(wanted) ? wanted : available[0];
+  const hits = [];
+  let drumType = 0;
+  if (difficulty) {
+    const byTick = new Map();
+    for (const l of sections[CHART_SECTION[difficulty]]) {
+      const m = /^(\d+)\s*=\s*N\s+(\d+)/.exec(l);
+      if (!m) continue;
+      const tick = Number(m[1]), n = Number(m[2]);
+      if (!byTick.has(tick)) byTick.set(tick, { lanes: new Set(), cym: new Set() });
+      const at = byTick.get(tick);
+      if (n <= 5) at.lanes.add(n);
+      else if (n === 32) at.lanes.add(0);                 // double kick: still a kick
+      else if (n >= 66 && n <= 68) { at.cym.add(n - 64); drumType = Math.max(drumType, 1); }
+      if (n === 5) drumType = 2;
+    }
+    for (const [tick, at] of byTick) {
+      for (const lane of at.lanes) hits.push({ tick, lane, cymbal: at.cym.has(lane) });
+    }
+  }
+  return finish(hits, phrases, tempoClock(resolution, tempos), drumType, {
+    difficulty, available, drumType, offset: Number(song.Offset) || 0, format: 'chart',
+  });
+}
+
+// ---- .mid -----------------------------------------------------------------
+
+const MIDI_BASE = { expert: 96, hard: 84, medium: 72, easy: 60 };
+
+function readMidi(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (String.fromCharCode(...bytes.subarray(0, 4)) !== 'MThd') throw new Error('not a midi file');
+  const division = dv.getUint16(12);
+  if (division & 0x8000) throw new Error('timecode midi files are not supported');
+  const tracks = [];
+  let p = 8 + dv.getUint32(4);
+  while (p + 8 <= bytes.length) {
+    const id = String.fromCharCode(...bytes.subarray(p, p + 4));
+    const len = dv.getUint32(p + 4);
+    const end = Math.min(p + 8 + len, bytes.length);
+    if (id === 'MTrk') tracks.push(readTrack(bytes, p + 8, end));
+    p = end;
+  }
+  return { division, tracks };
+}
+
+function readTrack(b, p, end) {
+  const track = { name: '', tempos: [], on: [], off: [], lyrics: [] };
+  let tick = 0, status = 0;
+  const vlq = () => { let v = 0, c; do { c = b[p++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80 && p < end); return v; };
+  while (p < end) {
+    tick += vlq();
+    let s = b[p];
+    if (s & 0x80) { p++; if (s < 0xf0) status = s; } else s = status;      // running status
+    if (s === 0xff) {
+      const type = b[p++], len = vlq();
+      if (type === 0x03 && !track.name) track.name = new TextDecoder('latin1').decode(b.subarray(p, p + len));
+      else if ((type === 0x05 || type === 0x01) && len && b[p] !== 0x5b) track.lyrics.push(tick);   // not "[section]" text
+      else if (type === 0x51 && len === 3) track.tempos.push({ tick, usPerBeat: (b[p] << 16) | (b[p + 1] << 8) | b[p + 2] });
+      p += len;
+    } else if (s === 0xf0 || s === 0xf7) {
+      p += vlq();
+    } else {
+      const kind = s & 0xf0;
+      if (kind === 0xc0 || kind === 0xd0) { p += 1; continue; }
+      const note = b[p], vel = b[p + 1];
+      p += 2;
+      if (kind === 0x90 && vel > 0) track.on.push({ tick, note });
+      else if (kind === 0x80 || kind === 0x90) track.off.push({ tick, note });
+    }
+  }
+  return track;
+}
+
+export function parseMidi(bytes, wanted = 'expert', drumTypeHint = null) {
+  const { division, tracks } = readMidi(bytes);
+  const tempos = tracks.flatMap((t) => t.tempos).sort((a, b) => a.tick - b.tick);
+  const drums = tracks.find((t) => /^PART DRUMS?$/i.test(t.name.trim()))
+    || tracks.find((t) => /drum/i.test(t.name));
+  const vocals = tracks.find((t) => /^PART VOCALS$/i.test(t.name.trim()));
+  const phrases = vocals
+    ? phraseStarts([...new Set(vocals.on.filter((e) => e.note === 105 || e.note === 106).map((e) => e.tick))], vocals.lyrics)
+    : [];
+  const hits = [];
+  let available = [], difficulty, drumType = 0;
+  if (drums) {
+    available = DIFFICULTIES.filter((d) => drums.on.some((e) => e.note >= MIDI_BASE[d] && e.note <= MIDI_BASE[d] + 5));
+    difficulty = available.includes(wanted) ? wanted : available[0];
+    // tom markers 110..112 turn yellow / blue / green from cymbal into tom while held
+    const tomSpans = { 2: [], 3: [], 4: [] };
+    for (const lane of [2, 3, 4]) {
+      const n = 108 + lane;
+      const ons = drums.on.filter((e) => e.note === n).map((e) => e.tick);
+      const offs = drums.off.filter((e) => e.note === n).map((e) => e.tick);
+      for (const start of ons) tomSpans[lane].push([start, offs.find((o) => o >= start) ?? Infinity]);
+    }
+    const hasToms = Object.values(tomSpans).some((s) => s.length);
+    const five = difficulty && drums.on.some((e) => e.note === MIDI_BASE[difficulty] + 5);
+    drumType = five ? 2 : (hasToms || drumTypeHint === 1) ? 1 : (drumTypeHint ?? 0);
+    if (difficulty) {
+      const base = MIDI_BASE[difficulty];
+      for (const e of drums.on) {
+        let lane = e.note - base;
+        if (e.note === base - 1) lane = 0;                 // double kick
+        if (lane < 0 || lane > 5) continue;
+        const isTom = lane >= 2 && lane <= 4 && tomSpans[lane].some(([a, z]) => e.tick >= a && e.tick < Math.max(z, a + 1));
+        hits.push({ tick: e.tick, lane, cymbal: !isTom });
+      }
+    }
+  }
+  return finish(hits, phrases, tempoClock(division, tempos), drumType, {
+    difficulty, available, drumType, offset: 0, format: 'mid',
+  });
+}
+
+export function parseNotesFile(name, bytes, wanted, drumTypeHint) {
+  if (name.toLowerCase().endsWith('.mid')) return parseMidi(bytes, wanted, drumTypeHint);
+  const utf16 = bytes[0] === 0xff && bytes[1] === 0xfe;
+  const text = new TextDecoder(utf16 ? 'utf-16le' : 'utf-8').decode(bytes).replace(/^﻿/, '');
+  return parseChartText(text, wanted);
+}

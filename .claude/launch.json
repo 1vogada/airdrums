@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "airdrums",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dev/serve.mjs"],
+      "port": 8377
+    }
+  ]
+}

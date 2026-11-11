@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Air Drums</title>
+  <meta name="description" content="Play the real drum part of the song Spotify is playing, on the Fresh 'n Rebel Air Drums.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<main id="menu" class="view">
+  <h1>Air Drums</h1>
+  <p class="lead">Play the real drum part of the song Spotify is playing.</p>
+  <div class="cards">
+    <a class="card" href="#/drums">
+      <div class="art art-kit" aria-hidden="true">
+        <i style="--c:#6ec6f5"></i><i style="--c:#f06bb0"></i><i style="--c:#f59a3c"></i>
+        <i style="--c:#35b558"></i><i style="--c:#f5d90a"></i><i style="--c:#7a80f0"></i>
+      </div>
+      <h2>Drums</h2>
+      <p>Your kit, laid out like the real one. A ring closes in on the drum to hit.</p>
+    </a>
+    <a class="card" href="#/colors">
+      <div class="art art-lanes" aria-hidden="true">
+        <i style="--c:#35b558"></i><i style="--c:#6ec6f5"></i><i style="--c:#f5d90a"></i>
+        <i style="--c:#f06bb0"></i><i style="--c:#7a80f0"></i><i style="--c:#f59a3c"></i>
+      </div>
+      <h2>Colors</h2>
+      <p>Six lanes in your sticks' LED colours. Notes fall, hit them on the line.</p>
+    </a>
+  </div>
+  <p class="status"><span id="menuSpotify"></span> · <span id="menuMic"></span> · <a href="#/setup">Setup</a></p>
+</main>
+
+<main id="play" class="view" hidden>
+  <header class="bar">
+    <a class="back" href="#/">← Menu</a>
+    <div class="song">
+      <img id="art" alt="" hidden>
+      <div><b id="title">No song yet</b><span id="artist"></span></div>
+    </div>
+    <div class="tools">
+      <label>Chart <select id="chartPick" disabled></select></label>
+      <label>Level <select id="difficulty" disabled></select></label>
+      <span class="nudge" title="Move the notes earlier or later. Keys: [ and ]">
+        Sync <button id="offDown" type="button" aria-label="Notes earlier">−</button>
+        <output id="offset">0 ms</output>
+        <button id="offUp" type="button" aria-label="Notes later">+</button>
+      </span>
+      <button id="listen" type="button" title="Listens to the song through the mic and lines the notes up with it">Sync by ear</button>
+      <button id="restart" type="button">Restart</button>
+      <button id="micBtn" type="button">Mic off</button>
+    </div>
+  </header>
+  <div class="strip">
+    <div class="lyrics"><p id="line"></p><p id="nextLine"></p></div>
+    <div class="hud">
+      <div id="score">0</div>
+      <div id="combo"></div>
+      <div id="acc"></div>
+    </div>
+  </div>
+  <div class="stage">
+    <canvas id="stage"></canvas>
+    <p id="notice" class="notice" hidden></p>
+    <form id="manual" class="manual" hidden>
+      <p>Spotify isn't linked, so type a song and start the clock yourself. <a href="#/setup">Link Spotify</a> to have it follow along.</p>
+      <div class="row"><input id="q" placeholder="song and artist" autocomplete="off" required><button>Find chart</button></div>
+      <ul id="results"></ul>
+    </form>
+  </div>
+  <footer class="keys">
+    <span>Test keys: <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> top row, <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> bottom row, <kbd>Space</kbd> bass</span>
+    <span><kbd>[</kbd> <kbd>]</kbd> sync</span>
+    <span id="manualKeys" hidden><kbd>Enter</kbd> start / pause · <kbd>←</kbd> <kbd>→</kbd> 5 s · <kbd>Home</kbd> start over</span>
+  </footer>
+</main>
+
+<main id="setup" class="view" hidden>
+  <a class="back" href="#/">← Menu</a>
+  <h1>Setup</h1>
+
+  <section>
+    <h2>1. Spotify</h2>
+    <p>Spotify only lets a hobby app have a few users, so you use your own free app (the one you made for minitype works).</p>
+    <ol>
+      <li>Open <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com/dashboard</a> and open your app (or create one, Web API).</li>
+      <li>Add this redirect URI to it: <code id="redirect"></code> <button id="copyRedirect" type="button">Copy</button></li>
+      <li>Paste the app's client ID here:</li>
+    </ol>
+    <div class="row">
+      <input id="clientId" placeholder="spotify client id" autocomplete="off" spellcheck="false">
+      <button id="link" type="button">Link Spotify</button>
+      <button id="unlink" type="button" hidden>Unlink</button>
+    </div>
+    <p id="spotifyState" class="state"></p>
+  </section>
+
+  <section>
+    <h2>2. Microphone</h2>
+    <p>The sticks only talk to the speaker, so the site listens for your hits. Put the mic near the Air Drums speaker.</p>
+    <div class="row"><button id="micToggle" type="button">Turn mic on</button><span id="micState" class="state"></span></div>
+    <div class="meter" aria-hidden="true"><div id="level"></div><div id="mark"></div></div>
+    <label class="slider">Only sounds louder than this count as hits
+      <input id="threshold" type="range" min="-60" max="-5" step="1">
+      <output id="thresholdOut"></output>
+    </label>
+    <p id="lastHit" class="state">Hit a drum to see how loud it comes in.</p>
+    <p class="hint">Music from the same speaker also reaches the mic. Turn the music down until it stays under the line and only your hits go over it, or play the music on headphones.</p>
+  </section>
+
+  <section>
+    <h2>3. Teach it your drums <span class="soft">(optional)</span></h2>
+    <p>Without this it scores your timing. With it, it also checks you hit the right drum. Pick a drum, then hit it 4 times.</p>
+    <div id="teach" class="teach"></div>
+    <div class="row"><button id="forget" type="button">Forget all</button><span id="teachState" class="state"></span></div>
+  </section>
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

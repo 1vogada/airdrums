@@ -1,0 +1,9 @@
+# firmware research notes and tools from the same project: kept local, not published
+PROJECT.md
+tools/
+.venv/
+
+node_modules/
+*.log
+.DS_Store
+Thumbs.db

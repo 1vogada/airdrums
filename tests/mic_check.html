@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mic check</title>
+<pre id="out">starting</pre>
+<script type="module">
+  // Starts the mic and counts what it hears for 6 seconds. With a browser's
+  // fake microphone (a beep every second) it should report a handful of hits.
+  import { Mic } from '../js/mic.js';
+  const out = document.getElementById('out');
+  const say = (text) => { out.textContent = text; fetch('/__report', { method: 'POST', body: text }).catch(() => {}); };
+  const mic = new Mic();
+  mic.threshold = -50;                 // for this page only, not saved
+  const hits = [];
+  let levels = 0, peak = -99;
+  mic.onHit = (h) => hits.push({ t: +h.t.toFixed(3), db: Math.round(h.db), loud: h.loud });
+  mic.onLevel = (db) => { levels++; peak = Math.max(peak, db); };
+  try {
+    await mic.start();
+    setTimeout(() => {
+      const gaps = hits.slice(1).map((h, i) => +(h.t - hits[i].t).toFixed(3));
+      say('RESULT ' + JSON.stringify({ running: mic.running, levels, peak: Math.round(peak), hits: hits.length, gaps, first: hits.slice(0, 4) }));
+    }, 6000);
+  } catch (e) {
+    say('RESULT error: ' + e.message);
+  }
+</script>
