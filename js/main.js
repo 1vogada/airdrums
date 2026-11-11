@@ -188,6 +188,7 @@ function tick() {
 function struck(t, pad, sure) {
   if (!stage || $('play').hidden) return;
   if (pad) stage.flash(pad, t);
+  if (pad && PAD[pad].free) return;                   // nothing is written for it: it only lights up
   if (game && clock?.playing && !listening) game.hit(clock.position(t), t, pad, sure);
 }
 

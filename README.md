@@ -13,7 +13,7 @@ Try it without Spotify: https://1vogada.github.io/airdrums/?demo=everlong%20foo%
   every two seconds, so the notes follow a pause, a seek or a skip.
 - **Loads the real drum part.** For each song it looks up a community drum
   chart on [Chorus Encore](https://www.enchor.us) (the Clone Hero chart search
-  engine) and maps it onto the kit's six zones and the bass pedal.
+  engine) and maps it onto the kit: six stick zones and two foot pedals.
 - **Shows lyrics** in time, from [LRCLIB](https://lrclib.net).
 - **Scores your hits by microphone.** The sticks only talk to the speaker, so
   the site listens for the drum sounds.
@@ -23,7 +23,9 @@ Two pages, same notes:
 - **Drums**: the kit laid out like the manual's picture. A ring closes in on
   the drum to hit.
 - **Colors**: six lanes in the sticks' LED colours. Notes fall and you hit
-  them on the line. The bass pedal is the wide bar.
+  them on the line. The bass drum is the wide bar.
+
+Eight things to hit, seven instruments (the hi-hat is a stick zone and a pedal):
 
 | Zone | LED colour | Chart lane |
 |---|---|---|
@@ -34,6 +36,7 @@ Two pages, same notes:
 | Snare | yellow | red |
 | Floor Drum | purple | green tom |
 | Bass drum (right foot) | (white here) | kick |
+| Hi-hat pedal (left foot) | (green here) | none yet |
 
 The left foot is the hi-hat pedal: flat makes the sticks' hi-hat closed, raised
 makes it open, and putting it down plays the hi-hat cymbal. Charts only write

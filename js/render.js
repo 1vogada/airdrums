@@ -14,7 +14,7 @@ const POP = 0.55;         // seconds a judgement word stays up
 const KIT_AT = {
   crash: [0.22, 0.2], tom: [0.5, 0.18], ride: [0.78, 0.2],
   hihat: [0.22, 0.56], snare: [0.5, 0.54], floor: [0.78, 0.56],
-  kick: [0.5, 0.89],
+  pedal: [0.33, 0.89], kick: [0.67, 0.89],
 };
 const RINGS = 3;          // rings shown per drum at once: more is a blur on a fast hi-hat
 
@@ -115,8 +115,8 @@ export class Stage {
       g.lineWidth = 4;
       g.strokeStyle = p.color;
       g.fillStyle = glow && !missed ? mix(p.color, 0.25 + 0.6 * glow) : '#171a22';
-      if (p.id === 'kick') {
-        roundRect(g, x - R * 1.5, y - R * 0.38, R * 3, R * 0.76, R * 0.38);
+      if (p.foot) {                                          // the pedals are pills, under the kit
+        roundRect(g, x - R * 1.3, y - R * 0.38, R * 2.6, R * 0.76, R * 0.38);
       } else {
         g.beginPath();
         g.arc(x, y, R, 0, Math.PI * 2);
@@ -134,7 +134,7 @@ export class Stage {
         g.globalAlpha = glow;
         g.lineWidth = 6;
         g.beginPath();
-        if (p.id === 'kick') roundRect(g, x - R * 1.5, y - R * 0.38, R * 3, R * 0.76, R * 0.38);
+        if (p.foot) roundRect(g, x - R * 1.3, y - R * 0.38, R * 2.6, R * 0.76, R * 0.38);
         else g.arc(x, y, R, 0, Math.PI * 2);
         g.stroke();
         g.globalAlpha = 1;
@@ -163,9 +163,9 @@ export class Stage {
       g.globalAlpha = (1 - f * 0.75) / rings[n.pad];
       g.lineWidth = 4;
       g.beginPath();
-      if (n.pad === 'kick') {
+      if (p.foot) {
         const s = 1 + f * 0.9;
-        roundRect(g, x - R * 1.5 * s, y - R * 0.38 * s, R * 3 * s, R * 0.76 * s, R * 0.38 * s);
+        roundRect(g, x - R * 1.3 * s, y - R * 0.38 * s, R * 2.6 * s, R * 0.76 * s, R * 0.38 * s);
       } else {
         g.arc(x, y, R * (1 + f * 0.95), 0, Math.PI * 2);
       }
@@ -175,7 +175,7 @@ export class Stage {
 
     for (const p of this.pops) {
       const [x, y] = at(p.pad);
-      this.word(p, x, y - (p.pad === 'kick' ? R * 0.6 : R * 1.15), now);
+      this.word(p, x, y - (PAD[p.pad].foot ? R * 0.6 : R * 1.15), now);
     }
   }
 
@@ -187,7 +187,7 @@ export class Stage {
     const width = Math.min(w - 24, 780);
     const x0 = (w - width) / 2;
     const lane = width / LANES.length;
-    const hitY = h - Math.max(70, h * 0.16);
+    const hitY = h - Math.max(100, h * 0.18);
     const laneX = (id) => x0 + LANES.indexOf(id) * lane;
     const yOf = (dt) => hitY - (dt / LEAD) * hitY;
 
@@ -234,14 +234,28 @@ export class Stage {
       g.textAlign = 'center';
       g.fillText(p.name, x + lane / 2, hitY + noteH * 0.9 + 20);
     }
-    g.fillStyle = mix(PAD.kick.color, 0.6);
-    g.font = '600 12px system-ui, sans-serif';
-    g.textAlign = 'center';
-    g.fillText('bass drum (right foot) = the wide bar', w / 2, hitY + noteH * 0.9 + 40);
+    // the two feet, under the lanes: left the hi-hat pedal, right the bass drum
+    const footY = hitY + noteH * 0.9 + 32;
+    const footX = { pedal: x0 + width * 0.25, kick: x0 + width * 0.75 };
+    for (const id of ['pedal', 'kick']) {
+      const p = PAD[id];
+      const glow = this.glow(id, now);
+      g.lineWidth = 2;
+      g.strokeStyle = mix(p.color, 0.8);
+      g.fillStyle = glow ? mix(p.color, 0.3 + 0.7 * glow) : '#12141b';
+      roundRect(g, footX[id] - width * 0.22, footY, width * 0.44, 24, 12);
+      g.fill();
+      g.stroke();
+      g.fillStyle = glow ? '#10131a' : mix(p.color, 0.9);
+      g.font = '600 12px system-ui, sans-serif';
+      g.textAlign = 'center';
+      g.fillText(`${p.name} · ${p.foot}${id === 'kick' ? ' · the wide bar' : ''}`, footX[id], footY + 16);
+    }
 
     for (const p of this.pops) {
-      const x = p.pad === 'kick' ? w / 2 : laneX(p.pad) + lane / 2;
-      this.word(p, x, hitY - noteH * 1.6, now);
+      const foot = PAD[p.pad].foot;
+      const x = p.pad === 'kick' ? w / 2 : foot ? footX[p.pad] : laneX(p.pad) + lane / 2;
+      this.word(p, x, foot && p.pad !== 'kick' ? footY - 4 : hitY - noteH * 1.6, now);
     }
   }
 }
