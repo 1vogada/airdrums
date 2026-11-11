@@ -20,7 +20,7 @@ Try it without Spotify: https://1vogada.github.io/airdrums/?demo=everlong%20foo%
 
 ![The tab page: Du Hast written out, one line per drum](docs/tab.png)
 
-Four pages, same notes:
+Five pages, same notes:
 
 - **Tab** (the main one): the drum part written out like a tab. One line per
   drum, bars and beats, scrolling under a play line. A cross is a cymbal, a
@@ -34,8 +34,13 @@ Four pages, same notes:
   (HH, SN, CR...); drums hit together share one note, split in their colours.
   The bass drum has its own thin track underneath. A note you hit flies up to
   its drum's name, so the colours teach themselves.
+- **Mania**: seven narrow columns, like a 7-key mania game. Three stick zones
+  a side and the bass drum in the middle column, on the space bar. Notes fall
+  fast, the column you hit lights up, and the combo counts up in the middle.
 
 ![The taiko page: Du Hast, hi-hat and snare notes riding in to the hit circle](docs/taiko.png)
+
+![The mania page: Du Hast in seven columns, the bass drum in the middle](docs/mania.png)
 
 Eight things to hit, seven instruments (the hi-hat is a stick zone and a pedal).
 The site's [kit map](https://1vogada.github.io/airdrums/#/map) shows where each one is:
@@ -65,8 +70,8 @@ the on-screen drummer: what is hit on a real kit, and when the hi-hat is open.
 Where a chart has those, the site goes by them and prefers that chart:
 
 - every hit lands on the drum it really is;
-- an open hi-hat has a small ring over it (Tab, Taiko), is hollow (Colors) or
-  dashed (Drums), and the left foot pad says up or down.
+- an open hi-hat has a small ring over it (Tab, Taiko), is hollow (Colors,
+  Mania) or dashed (Drums), and the left foot pad says up or down.
 
 Other charts fall back to the lanes (table above). `tests/inspect_chart.mjs`
 shows what each chart of a song says, section by section.
@@ -193,6 +198,6 @@ and fetch Deezer's public 30-second preview clips (the site itself never does):
 | `js/lyrics.js` | LRCLIB |
 | `js/mic.js`, `js/onset-worklet.js` | hit detection, drum fingerprints, the sound kept for the line-up |
 | `js/game.js` | judging and score |
-| `js/render.js` | the four game pages |
+| `js/render.js` | the five game pages |
 | `js/main.js` | menu, pages, setup |
 | `sw.js` | makes browsers check for new files on every load, so an update never runs half old |

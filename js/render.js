@@ -7,6 +7,8 @@
 //             fall and you hit them on the line.
 //   'taiko' - the taiko page: one track, notes ride in from the right and
 //             you hit them on the circle.
+//   'mania' - the mania page: seven fast columns, the bass drum in the
+//             middle one.
 
 import { PADS, PAD, LANES } from './kit.js';
 
@@ -24,6 +26,7 @@ const KIT_AT = {
 const TAB_ROWS = ['crash', 'ride', 'hihat', 'tom', 'snare', 'floor', 'kick'];
 const RINGS = 3;          // rings shown per drum at once: more is a blur on a fast hi-hat
 const STICKS = PADS.filter((p) => !p.foot).map((p) => p.id);   // the six stick zones, in the kit's order
+const MANIA = [...LANES.slice(0, 3), 'kick', ...LANES.slice(3)];   // the mania page's columns: the bass drum between the hands
 const FLY = 0.32;         // seconds a hit note takes to fly to its drum's name on the taiko page
 const BURST = 0.26;       // seconds the ring off a hit lasts there
 const TAU = Math.PI * 2;
@@ -74,6 +77,7 @@ export class Stage {
     if (this.mode === 'tab') this.tab(game, pos, now);
     else if (this.mode === 'kit') this.kit(game, pos, now);
     else if (this.mode === 'taiko') this.taiko(game, pos, now);
+    else if (this.mode === 'mania') this.mania(game, pos, now);
     else this.lanes(game, pos, now);
     this.pops = this.pops.filter((p) => now - p.at < POP);
   }
@@ -483,6 +487,135 @@ export class Stage {
     if (newest.foot) this.word(newest.foot, hitX, fy + 5, now);
   }
 
+  // ---- mania page -----------------------------------------------------------
+
+  // Seven columns, like a 7-key mania game: three stick zones a side and the
+  // bass drum in the middle. Notes fall fast and you hit them on the line; a
+  // column lights up when you hit it, and the combo counts up in the middle.
+  mania(game, pos, now) {
+    const { g, w, h } = this;
+    const LEAD = 1.15;                                        // seconds a note is on its way down
+    const col = Math.max(40, Math.min(84, (w - 24) / MANIA.length));
+    const width = col * MANIA.length;
+    const x0 = (w - width) / 2;
+    const keyH = Math.max(54, Math.min(74, h * 0.11));
+    const hitY = h - keyH - 50;
+    const noteH = Math.max(14, Math.min(26, col * 0.36));
+    const colX = (id) => x0 + MANIA.indexOf(id) * col;
+    const yOf = (dt) => hitY - (dt / LEAD) * hitY;
+
+    // the playfield
+    MANIA.forEach((id, i) => {
+      g.fillStyle = id === 'kick' ? '#181b24' : i % 2 ? '#12141b' : '#0f1117';
+      g.fillRect(x0 + i * col, 0, col, hitY + keyH);
+    });
+    g.strokeStyle = '#222634';
+    g.lineWidth = 1;
+    for (let i = 1; i < MANIA.length; i++) {
+      g.beginPath();
+      g.moveTo(x0 + i * col, 0);
+      g.lineTo(x0 + i * col, hitY);
+      g.stroke();
+    }
+
+    // a column you just hit lights up
+    for (const id of MANIA) {
+      const glow = this.glow(id, now);
+      if (!glow || this.lit[id].name === 'miss') continue;
+      const beam = g.createLinearGradient(0, hitY, 0, hitY * 0.35);
+      beam.addColorStop(0, rgba(PAD[id].color, 0.5 * glow));
+      beam.addColorStop(1, rgba(PAD[id].color, 0));
+      g.fillStyle = beam;
+      g.fillRect(colX(id), hitY * 0.35, col, hitY * 0.65);
+    }
+
+    if (game) {                                               // bar lines
+      const shift = game.offset - pos;
+      g.strokeStyle = '#3a4054';
+      g.lineWidth = 1.5;
+      for (const t of game.bars || []) {
+        const y = yOf(t + shift);
+        if (y < 0 || y > hitY) continue;
+        g.beginPath();
+        g.moveTo(x0, y);
+        g.lineTo(x0 + width, y);
+        g.stroke();
+      }
+    }
+
+    for (const [n, dt] of this.visible(game, pos, LEAD)) {
+      if (PAD[n.pad].free || (n.state && n.state !== 'miss')) continue;
+      g.globalAlpha = n.state === 'miss' ? 0.25 : 1;
+      roundRect(g, colX(n.pad) + 3, yOf(dt) - noteH / 2, col - 6, noteH, 5);
+      if (n.open) {                                           // open hi-hat: hollow, left foot up
+        g.fillStyle = '#12141b';
+        g.fill();
+        g.lineWidth = 3;
+        g.strokeStyle = PAD[n.pad].color;
+        g.stroke();
+      } else {
+        g.fillStyle = PAD[n.pad].color;
+        g.fill();
+      }
+    }
+    g.globalAlpha = 1;
+
+    // the line to hit on, and under it one key per column
+    g.fillStyle = '#e7e9f0';
+    g.fillRect(x0, hitY - 2, width, 4);
+    g.textAlign = 'center';
+    for (const id of MANIA) {
+      const p = PAD[id];
+      const x = colX(id);
+      const glow = this.glow(id, now);
+      const missed = this.lit[id]?.name === 'miss';
+      g.fillStyle = glow && !missed ? mix(p.color, 0.3 + 0.7 * glow) : '#171a22';
+      g.fillRect(x + 1, hitY + 2, col - 2, keyH - 2);
+      g.fillStyle = missed && glow ? JUDGE_COLOR.miss : p.color;
+      g.fillRect(x + 1, hitY + 2, col - 2, 4);
+      g.fillStyle = glow && !missed ? '#10131a' : mix(p.color, 0.95);
+      g.font = `700 ${Math.round(Math.min(17, col * 0.34))}px system-ui, sans-serif`;
+      g.fillText(p.short, x + col / 2, hitY + keyH * 0.5);
+      g.fillStyle = glow && !missed ? '#10131a' : '#7d8398';
+      g.font = `500 ${Math.round(Math.min(12, col * 0.26))}px system-ui, sans-serif`;
+      g.fillText(p.key === ' ' ? 'Space' : p.key.toUpperCase(), x + col / 2, hitY + keyH * 0.82);
+    }
+    g.strokeStyle = '#4a5068';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(x0, 0);
+    g.lineTo(x0, hitY + keyH);
+    g.moveTo(x0 + width, 0);
+    g.lineTo(x0 + width, hitY + keyH);
+    g.stroke();
+
+    this.pedalPill(w / 2, hitY + keyH + 12, Math.min(340, w - 24), this.footUp(game, pos), now);
+
+    // in the middle: the combo, bumping on every hit, and the last judgement
+    const last = this.pops[this.pops.length - 1];
+    const mid = hitY * 0.4;
+    g.lineJoin = 'round';
+    g.strokeStyle = '#0c0e13';
+    if (game && game.combo > 1) {
+      const bump = last && last.name !== 'miss' ? Math.max(0, 1 - (now - last.at) / 0.12) : 0;
+      g.font = `800 ${Math.round(col * 0.85 * (1 + 0.16 * bump))}px system-ui, sans-serif`;
+      g.lineWidth = 6;
+      g.strokeText(String(game.combo), w / 2, mid);
+      g.fillStyle = '#ffffff';
+      g.fillText(String(game.combo), w / 2, mid);
+    }
+    if (last) {
+      g.globalAlpha = Math.max(0, 1 - (now - last.at) / POP);
+      g.font = `700 ${Math.round(Math.max(14, col * 0.34))}px system-ui, sans-serif`;
+      g.lineWidth = 5;
+      g.strokeText(last.name.toUpperCase(), w / 2, mid + col * 0.55);
+      g.fillStyle = JUDGE_COLOR[last.name] || '#fff';
+      g.fillText(last.name.toUpperCase(), w / 2, mid + col * 0.55);
+      g.globalAlpha = 1;
+    }
+    g.lineJoin = 'miter';
+  }
+
   // A taiko note: a white-rimmed disc with one slice per drum hit together,
   // each in its drum's colour with its short name.
   disc(x, y, r, pads, missed = false, label = true) {
@@ -717,6 +850,12 @@ export class Stage {
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
   g.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
+}
+
+// A colour see-through, for light that fades out.
+function rgba(hex, alpha) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 // A colour at part strength over the dark stage.
