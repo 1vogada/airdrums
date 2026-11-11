@@ -152,3 +152,4 @@ reports what the mic code hears (a browser's fake microphone works).
 | `js/game.js` | judging, score, sync by ear |
 | `js/render.js` | the two game pages |
 | `js/main.js` | menu, pages, setup |
+| `sw.js` | makes browsers check for new files on every load, so an update never runs half old |

@@ -287,7 +287,7 @@ $('restart').addEventListener('click', async () => {
 });
 
 addEventListener('keydown', (e) => {
-  if ($('play').hidden || e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if ($('play').hidden || e.target.matches?.('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const pad = KEY_TO_PAD[key];
   if (pad) {

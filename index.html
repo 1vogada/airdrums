@@ -242,6 +242,18 @@
   </section>
 </main>
 
+<script>
+  // Always run the newest files (see sw.js). The first time a browser gets the
+  // worker, reload once so the scripts come through it - but not in the middle
+  // of a Spotify login, which comes back with ?code= in the address.
+  if ('serviceWorker' in navigator) {
+    const first = !navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    if (first && !/[?&](code|error)=/.test(location.search)) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+    }
+  }
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
