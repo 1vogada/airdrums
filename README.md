@@ -25,7 +25,10 @@ Two pages, same notes:
 - **Colors**: six lanes in the sticks' LED colours. Notes fall and you hit
   them on the line. The bass drum is the wide bar.
 
-Eight things to hit, seven instruments (the hi-hat is a stick zone and a pedal):
+Eight things to hit, seven instruments (the hi-hat is a stick zone and a pedal).
+The site's [kit map](https://1vogada.github.io/airdrums/#/map) shows where each one is:
+
+![Kit map: two rows of three stick zones and the two foot pedals](docs/kit-map.png)
 
 | Zone | LED colour | Chart lane |
 |---|---|---|

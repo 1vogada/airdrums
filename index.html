@@ -30,6 +30,7 @@
       <p>Six lanes in your sticks' LED colours. Notes fall, hit them on the line.</p>
     </a>
   </div>
+  <a class="maplink" href="#/map"><b>Where is each drum?</b><span>See the kit map →</span></a>
   <p class="status"><span id="menuSpotify"></span> · <span id="menuMic"></span> · <a href="#/setup">Setup</a></p>
 </main>
 
@@ -74,8 +75,112 @@
     <span>Test keys: <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> top row, <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> bottom row, <kbd>Z</kbd> left foot, <kbd>Space</kbd> right foot</span>
     <span><kbd>[</kbd> <kbd>]</kbd> sync</span>
     <span>Left foot flat = closed hi-hat, raised = open</span>
+    <a href="#/map">Kit map</a>
     <span id="manualKeys" hidden><kbd>Enter</kbd> start / pause · <kbd>←</kbd> <kbd>→</kbd> 5 s · <kbd>Home</kbd> start over</span>
   </footer>
+</main>
+
+<main id="map" class="view" hidden>
+  <a class="back" href="#/">← Menu</a>
+  <h1>Kit map</h1>
+  <p class="lead">Six zones in the air in front of you, two rows of three, and one pedal under each foot. The LED on the stick shows the colour of the zone it's pointing at.</p>
+
+  <div class="mapwrap">
+    <svg class="mapmain" viewBox="0 0 630 420" role="img" aria-label="The six stick zones in two rows of three, with the two foot pedals below">
+      <text class="m-soft m-left" x="12" y="106.0">Stick up</text>
+      <text class="m-tiny m-left" x="12" y="126.0">raised about 30°</text>
+      <text class="m-soft m-left" x="12" y="230.0">Stick low</text>
+      <text class="m-tiny m-left" x="12" y="250.0">pointing ahead</text>
+      <text class="m-soft m-left" x="12" y="356">Feet</text>
+      <text class="m-head" x="223.0" y="30">Left</text>
+      <text class="m-soft" x="223.0" y="50">60° wide</text>
+      <text class="m-head" x="381.0" y="30">Middle</text>
+      <text class="m-soft" x="381.0" y="50">60° wide</text>
+      <text class="m-head" x="539.0" y="30">Right</text>
+      <text class="m-soft" x="539.0" y="50">60° wide</text>
+      <g style="--c:#6ec6f5">
+        <rect class="m-zone" x="150" y="64" width="146" height="112" rx="16"/>
+        <text class="m-name" x="223.0" y="114">Crash</text>
+        <circle class="m-led" cx="185.0" cy="141" r="6"/>
+        <text class="m-soft m-left" x="197.0" y="146">light blue LED</text>
+      </g>
+      <g style="--c:#f06bb0">
+        <rect class="m-zone" x="308" y="64" width="146" height="112" rx="16"/>
+        <text class="m-name" x="381.0" y="114">Tom 2</text>
+        <circle class="m-led" cx="343.0" cy="141" r="6"/>
+        <text class="m-soft m-left" x="355.0" y="146">pink LED</text>
+      </g>
+      <g style="--c:#f59a3c">
+        <rect class="m-zone" x="466" y="64" width="146" height="112" rx="16"/>
+        <text class="m-name" x="539.0" y="114">Ride</text>
+        <circle class="m-led" cx="501.0" cy="141" r="6"/>
+        <text class="m-soft m-left" x="513.0" y="146">orange LED</text>
+      </g>
+      <g style="--c:#35b558">
+        <rect class="m-zone" x="150" y="188" width="146" height="112" rx="16"/>
+        <text class="m-name" x="223.0" y="238">Hi-Hat</text>
+        <circle class="m-led" cx="185.0" cy="265" r="6"/>
+        <text class="m-soft m-left" x="197.0" y="270">green LED</text>
+      </g>
+      <g style="--c:#f5d90a">
+        <rect class="m-zone" x="308" y="188" width="146" height="112" rx="16"/>
+        <text class="m-name" x="381.0" y="238">Snare</text>
+        <circle class="m-led" cx="343.0" cy="265" r="6"/>
+        <text class="m-soft m-left" x="355.0" y="270">yellow LED</text>
+      </g>
+      <g style="--c:#7a80f0">
+        <rect class="m-zone" x="466" y="188" width="146" height="112" rx="16"/>
+        <text class="m-name" x="539.0" y="238">Floor Drum</text>
+        <circle class="m-led" cx="501.0" cy="265" r="6"/>
+        <text class="m-soft m-left" x="513.0" y="270">purple LED</text>
+      </g>
+      <g style="--c:#35b558">
+        <rect class="m-zone" x="150" y="326" width="225.0" height="62" rx="31"/>
+        <text class="m-name m-small" x="262.5" y="353">Hi-hat pedal</text>
+        <text class="m-soft" x="262.5" y="373">left foot</text>
+      </g>
+      <g style="--c:#e9e9ee">
+        <rect class="m-zone" x="387.0" y="326" width="225.0" height="62" rx="31"/>
+        <text class="m-name m-small" x="499.5" y="353">Bass drum</text>
+        <text class="m-soft" x="499.5" y="373">right foot</text>
+      </g>
+      <text class="m-tiny" x="381.0" y="414">You stand here, facing the middle column.</text>
+    </svg>
+
+    <div class="mapside">
+      <figure>
+        <svg viewBox="0 0 240 170" role="img" aria-label="Side view: the stick low for the bottom row, raised about 30 degrees for the top row">
+          <line class="m-stick" x1="34" y1="128" x2="204" y2="128"/>
+          <line class="m-stick" x1="34" y1="128" x2="181" y2="43"/>
+          <path class="m-arc" d="M 114 128 A 80 80 0 0 0 103.3 88"/>
+          <text class="m-soft" x="132" y="110">30°</text>
+          <circle class="m-you" cx="34" cy="128" r="7"/>
+          <text class="m-tiny m-left" x="140" y="34">top row</text>
+          <text class="m-tiny m-left" x="150" y="150">bottom row</text>
+        </svg>
+        <figcaption>From the side. Same spot, stick up or low.</figcaption>
+      </figure>
+      <figure>
+        <svg viewBox="0 0 240 150" role="img" aria-label="Top view: left, middle and right, each 60 degrees wide">
+          <path class="m-sector" style="--c:#35b558" d="M120 132 L20 132 A100 100 0 0 1 70 45.4 Z"/>
+          <path class="m-sector" style="--c:#f5d90a" d="M120 132 L70 45.4 A100 100 0 0 1 170 45.4 Z"/>
+          <path class="m-sector" style="--c:#7a80f0" d="M120 132 L170 45.4 A100 100 0 0 1 220 132 Z"/>
+          <text class="m-soft" x="62" y="106">left</text>
+          <text class="m-soft" x="120" y="78">middle</text>
+          <text class="m-soft" x="178" y="106">right</text>
+          <circle class="m-you" cx="120" cy="132" r="7"/>
+        </svg>
+        <figcaption>From above. Three slices, 60° each.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <ul class="mapnotes">
+    <li><b>Red LED</b> means the stick is out of range. Bring it back into one of the six zones.</li>
+    <li><b>Left foot</b> is the hi-hat pedal. Putting it down plays the hi-hat. Where it rests changes the stick's Hi-Hat zone: foot flat is a closed hi-hat, foot raised is an open one.</li>
+    <li><b>Right foot</b> is the bass drum. Raise it, then put it down flat.</li>
+    <li>The <a href="#/drums">Drums</a> page uses this same layout. The <a href="#/colors">Colors</a> page uses the LED colours.</li>
+  </ul>
 </main>
 
 <main id="setup" class="view" hidden>

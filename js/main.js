@@ -33,8 +33,8 @@ let roughShift = null;                  // what the lyrics say the chart is off 
 
 function route() {
   const where = location.hash.replace(/^#\/?/, '') || 'menu';
-  const page = where === 'drums' || where === 'colors' ? 'play' : where === 'setup' ? 'setup' : 'menu';
-  for (const id of ['menu', 'play', 'setup']) $(id).hidden = id !== page;
+  const page = where === 'drums' || where === 'colors' ? 'play' : where === 'setup' || where === 'map' ? where : 'menu';
+  for (const id of ['menu', 'play', 'setup', 'map']) $(id).hidden = id !== page;
   cancelAnimationFrame(frame);
   if (page === 'play') enterPlay(where === 'drums' ? 'kit' : 'lanes');
   if (page === 'menu') showMenu();
