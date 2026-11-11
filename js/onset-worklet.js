@@ -12,6 +12,7 @@ const REFRACT = 12;       // hops before the next hit can start (~64 ms)
 const RATIO = 2.0;        // times louder than the background
 const FLOOR = 0.0015;     // quietest thing that can be a hit (about -56 dB)
 const METER = 8;          // hops between level reports
+const CHUNK = 48;         // hops of band loudness sent at a time (about a quarter second)
 
 class Onset extends AudioWorkletProcessor {
   constructor() {
@@ -30,6 +31,12 @@ class Onset extends AudioWorkletProcessor {
     this.hit = null;
     this.meterN = 0;
     this.meterPeak = 0;
+    // the loudness of the lowest and highest band, hop by hop: the page lines
+    // the song up with the chart from these (js/align.js)
+    this.low = new Float32Array(CHUNK);
+    this.high = new Float32Array(CHUNK);
+    this.chunkN = 0;
+    this.chunkFrame = 0;
   }
 
   process(inputs) {
@@ -72,6 +79,13 @@ class Onset extends AudioWorkletProcessor {
       this.port.postMessage({ type: 'level', peak: this.meterPeak });
       this.meterN = 0;
       this.meterPeak = 0;
+    }
+    if (this.chunkN === 0) this.chunkFrame = frame;
+    this.low[this.chunkN] = band[0] / HOP;
+    this.high[this.chunkN] = band[3] / HOP;
+    if (++this.chunkN === CHUNK) {
+      this.port.postMessage({ type: 'bands', frame: this.chunkFrame, low: this.low.slice(), high: this.high.slice() });
+      this.chunkN = 0;
     }
     band[0] = band[1] = band[2] = band[3] = 0;
     this.zc = 0;

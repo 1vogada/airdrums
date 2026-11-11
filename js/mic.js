@@ -3,6 +3,10 @@
 // like. The sticks themselves can't be read: they only talk to the speaker.
 
 import * as store from './store.js';
+import { rise } from './align.js';
+
+const HOP = 256;                       // samples per step in the worklet
+const KEEP = 30;                       // seconds of band loudness kept
 
 const dB = (x) => 20 * Math.log10(Math.max(x, 1e-6));
 
@@ -15,6 +19,10 @@ export class Mic {
     this.onHit = () => {};      // ({ t, db, loud, pad })  t in performance seconds
     this.onLevel = () => {};    // (db)
     this.teaching = null;
+    this.lowE = [];             // loudness of the lowest band, step by step
+    this.highE = [];            // ...and of the highest
+    this.bandsStart = 0;        // the audio frame lowE[0] starts at
+    this.bandsEnd = -1;
   }
 
   async start() {
@@ -27,6 +35,7 @@ export class Mic {
     } catch (e) {
       throw new Error(e.name === 'NotAllowedError' ? 'microphone access was refused' : `no microphone: ${e.message}`);
     }
+    this.startedAt = performance.now() / 1000;               // when the sound started coming in
     this.ctx = new AudioContext({ latencyHint: 'interactive' });
     await this.ctx.audioWorklet.addModule(new URL('./onset-worklet.js', import.meta.url));
     const src = this.ctx.createMediaStreamSource(this.stream);
@@ -53,6 +62,7 @@ export class Mic {
 
   heard(m) {
     if (m.type === 'level') { this.onLevel(dB(m.peak)); return; }
+    if (m.type === 'bands') { this.keep(m); return; }
     // when it happened, on the page's clock
     const t = performance.now() / 1000 - (this.ctx.currentTime - m.frame / this.ctx.sampleRate);
     const db = dB(m.peak);
@@ -60,6 +70,40 @@ export class Mic {
     const print = fingerprint(m);
     if (this.teaching && loud) { this.teach(print); return; }
     this.onHit({ t, db, loud, pad: this.classify(print) });
+  }
+
+  keep(m) {
+    if (m.frame !== this.bandsEnd) {                         // a gap in the sound: start over
+      this.lowE = [];
+      this.highE = [];
+      this.bandsStart = m.frame;
+    }
+    for (let i = 0; i < m.low.length; i++) { this.lowE.push(m.low[i]); this.highE.push(m.high[i]); }
+    this.bandsEnd = m.frame + m.low.length * HOP;
+    const most = Math.ceil((KEEP * this.ctx.sampleRate) / HOP);
+    if (this.lowE.length > most * 1.25) {
+      const drop = this.lowE.length - most;
+      this.lowE.splice(0, drop);
+      this.highE.splice(0, drop);
+      this.bandsStart += drop * HOP;
+    }
+  }
+
+  // What was heard in the last `seconds`, as hit curves for js/align.js, and
+  // `start`: when it began on the page's clock. null until that much is in.
+  clip(seconds) {
+    if (!this.running) return null;
+    const hop = HOP / this.ctx.sampleRate;
+    const want = Math.round(seconds / hop);
+    if (this.lowE.length < want) return null;
+    const from = this.lowE.length - want;
+    const frame = this.bandsStart + from * HOP;
+    return {
+      low: rise(Float32Array.from(this.lowE.slice(from)), hop),
+      high: rise(Float32Array.from(this.highE.slice(from)), hop),
+      hop,
+      start: performance.now() / 1000 - (this.ctx.currentTime - frame / this.ctx.sampleRate),
+    };
   }
 
   get taught() { return Object.keys(this.centroids); }

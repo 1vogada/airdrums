@@ -89,12 +89,32 @@ than Spotify's, and a Bluetooth speaker adds its own delay.
   start 2 to 5 seconds late). Good to about 0.2 s, since lyric timings are
   hand-made. Charts without vocals can't be lined up this way and show
   "not synced".
-- **Sync by ear** listens to the song through the mic for 12 seconds and lines
-  the notes up with the drums it hears.
+- **By ear, all the time.** With the mic on, the site keeps comparing the last
+  12 seconds of sound with the chart and tightens the line-up to within a few
+  milliseconds. The mic hears the song as you do, late by whatever the speaker
+  and Bluetooth add, so this is the line-up that matches your ears. By itself
+  it only makes small corrections (0.12 s a step, 0.15 s in all): a drum
+  pattern repeats, and a bigger jump could land the notes a beat off.
+- **Sync by ear** (the button) searches wider, for when the notes are far off.
+  What it finds is also remembered as how late your setup's sound usually is,
+  and new songs start from there.
 - **−** and **+** (or `[` and `]`, with Shift for bigger steps) nudge by hand.
 
-Your tuning sits on top of the automatic line-up and is remembered per song and
+The tuning sits on top of the automatic line-up and is remembered per song and
 chart. Click the number to drop it and go back to automatic.
+
+### How good are the charts?
+
+Measured against 30-second clips of the real recordings (`tests/agree_check.mjs`):
+once a chart is lined up, 88 to 100% of its bass drum and snare hits sit on a
+real hit in the recording, for seven of eight songs tried. The notes are
+right; what goes wrong is the line-up. Two things to know:
+
+- A game's version of a song is sometimes a different edit than Spotify's. One
+  line-up then fits one part of the song and is off in another (seen on
+  Chop Suey!: about a second, part way through).
+- The lyric line-up is good to about 0.2 s, which is a lot in a drum part.
+  That is what the mic is for.
 
 ## Limits
 
@@ -112,7 +132,10 @@ chart. Click the number to drop it and go back to automatic.
   open.
 - Line-up: for a chart without vocals, borrow the line-up of another chart of
   the same song by matching their drum patterns.
-- Mic: sync by ear and scoring are only tested with a fake microphone so far.
+- Mic: the line-up by ear is tested with real recordings played in as the
+  microphone (`tests/ear_check.mjs`, `tests/ear_e2e.mjs`), not yet with a real
+  microphone in a room. Scoring is only tested with a fake microphone.
+- Songs whose chart is a different edit: re-line-up section by section.
 - Songs with no chart: fall back to a generated beat.
 
 ## Where the data comes from
@@ -141,15 +164,28 @@ node tests/charts_check.mjs
 finds and parses real charts for a handful of songs. `tests/mic_check.html`
 reports what the mic code hears (a browser's fake microphone works).
 
+The tests below compare charts with the real recordings. They need `ffmpeg`
+and fetch Deezer's public 30-second preview clips (the site itself never does):
+
+| Test | What it shows |
+|---|---|
+| `tests/agree_check.mjs` | how many of a chart's bass and snare hits are in the recording |
+| `tests/align_check.mjs` | where each clip sits in its chart, next to what the lyrics say |
+| `tests/ear_check.mjs` | the line-up by ear: clips played through the real mic code, started from a wrong guess |
+| `tests/ear_passage.mjs` | how well each stretch of one clip can be placed |
+| `tests/ear_e2e.mjs` | the same in a real browser (Edge, dev server running), the clip played in as the microphone |
+| `tests/inspect_chart.mjs`, `inspect_sync.mjs`, `inspect_open.mjs` | what the charts of one song say |
+
 | File | What it holds |
 |---|---|
 | `js/kit.js` | the zones, their colours and test keys |
 | `js/charts.js` | chart search, fetching the notes file, lyric-based alignment |
 | `js/chartparse.js` | `.chart` and `.mid` parsers |
+| `js/align.js` | finding where a stretch of sound sits in a chart |
 | `js/spotify.js` | login, now playing, the follow clock |
 | `js/lyrics.js` | LRCLIB |
-| `js/mic.js`, `js/onset-worklet.js` | hit detection and drum fingerprints |
-| `js/game.js` | judging, score, sync by ear |
-| `js/render.js` | the two game pages |
+| `js/mic.js`, `js/onset-worklet.js` | hit detection, drum fingerprints, the sound kept for the line-up |
+| `js/game.js` | judging and score |
+| `js/render.js` | the three game pages |
 | `js/main.js` | menu, pages, setup |
 | `sw.js` | makes browsers check for new files on every load, so an update never runs half old |
