@@ -1,46 +1,169 @@
 // Finds a real drum chart for a song on Chorus Encore (enchor.us, the Clone
 // Hero chart search engine) and pulls ONLY the notes file out of its .sng
 // package with HTTP range requests - the audio in the package is never fetched.
+//
+// Every request to the search (api.enchor.us) goes through the paced queue in
+// net.js, and every answer row is cut down by slim() in catalog.js the moment
+// it arrives. The range requests for notes files (files.enchor.us) go direct.
 
 import { parseNotesFile } from './chartparse.js';
+import { post } from './net.js';
+import { slim, songs, retries, findVersion } from './catalog.js';
+import { norm, cleanTitle } from './text.js';
 
-const API = 'https://api.enchor.us/search';
+export { norm, cleanTitle };
+
 const FILES = 'https://files.enchor.us';
+export const PER_PAGE = 25;            // charts asked for per page
 
-export const norm = (s) => (s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
+// ---- what this session has seen (memory only, gone on reload) ---------------
 
-// "Song - Remastered 2011", "Song (feat. X)" -> "Song"
-export function cleanTitle(title) {
-  return (title || '')
-    .replace(/\s+-\s+.*$/, '')
-    .replace(/\s*[([][^)\]]*(feat|with|remaster|version|edit|mix|live|mono|stereo|deluxe|bonus|from)[^)\]]*[)\]]/gi, '')
-    .trim() || title;
+const KEEP_ANSWERS = 50;               // searches whose answers stay, so going Back is instant
+const KEEP_SEEN = 600;                 // single versions remembered, for opening a song by its address
+const KEEP_FILES = 30;                 // notes files kept (20 to 300 KB each)
+const answers = new Map();             // tidy lower-case query -> answer; the one used longest ago comes first
+const seen = new Map();                // md5 -> version: every version any answer brought
+const notesFiles = new Map();          // md5 -> the bytes of its notes file
+const fetching = new Map();            // md5 -> the load of its notes file that is under way
+const born = new WeakMap();            // those bytes -> { md5, name }
+const realKits = new Map();            // md5 -> does it say what is hit on a real kit (known after a parse)
+
+function keep(map, key, value, most) {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > most) map.delete(map.keys().next().value);
 }
 
-export async function searchCharts(query) {
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      search: query, page: 1, instrument: 'drums', difficulty: null,
-      drumType: null, drumsReviewed: false, source: 'website',
-    }),
-  });
-  if (res.status === 429) throw new Error('the chart site says too many requests - wait a minute');
-  if (!res.ok) throw new Error(`the chart site said ${res.status}`);
-  const body = await res.json();
-  return (body.data || []).map((c) => ({
-    md5: c.md5,
-    name: c.name || '',
-    artist: c.artist || '',
-    album: c.album || '',
-    charter: c.charter || '',
-    length: (c.song_length || 0) / 1000,
-    drumType: c.notesData?.drumType ?? 0,
-    lyrics: Boolean(c.notesData?.hasLyrics),
-    delay: (c.delay || 0) / 1000 + (c.chart_offset || 0) / 1000,
-    notes: Math.max(0, ...(c.notesData?.noteCounts || []).filter((n) => n.instrument === 'drums').map((n) => n.count)),
-  }));
+// Forget everything above (the tests start clean with it).
+export function forgetAll() {
+  for (const m of [answers, seen, notesFiles, fetching, realKits]) m.clear();
+}
+
+// Whether this version says what is hit on a real kit: true or false once its
+// notes were parsed in this session, undefined before that.
+export const realKit = (md5) => realKits.get(md5);
+
+// What is known about real kits: the caller's own knowledge (the library) first, then this session's.
+const knows = (real) => (md5) => real?.(md5) ?? realKits.get(md5);
+
+// ---- asking the chart site ----------------------------------------------------
+
+// Answer rows cut down at once, the same chart only once (the site sends one row per copy of it).
+function cutDown(body) {
+  const rows = [];
+  const had = new Set();
+  for (const row of body?.data || []) {
+    if (!row?.md5 || had.has(row.md5)) continue;
+    had.add(row.md5);
+    const v = slim(row);
+    rows.push(v);
+    keep(seen, v.md5, v, KEEP_SEEN);
+  }
+  return rows;
+}
+
+// One page of the answer to a search: { rows, found }. `found` is how many charts the site has for it.
+async function ask(query, page, signal) {
+  const body = await post('/search', {
+    search: query, page, per_page: PER_PAGE, instrument: 'drums', difficulty: null,
+    drumType: null, drumsReviewed: false, source: 'website',
+  }, { signal });
+  return { rows: cutDown(body), found: Number(body?.found) || 0 };
+}
+
+// The chart site's answer to a search, in its own order: one record per chart
+// (see slim() in catalog.js: md5, name, artist, album, charter, length,
+// drumType, lyrics, delay, notes and more), the same chart never twice.
+// Rejects with a ChartSiteError (net.js) when the site does not answer.
+export async function searchCharts(query, { page = 1, signal } = {}) {
+  return (await ask(query, page, signal)).rows;
+}
+
+const tidy = (query) => (query || '').trim().replace(/\s+/g, ' ');
+
+// The first page of a search. When it has no song to show, the second tries of
+// retries() are asked one after the other until one has.
+async function firstPage(asked, signal) {
+  const tried = [];
+  for (const q of [asked, ...retries(asked)]) {
+    tried.push(q);
+    const { rows, found } = await ask(q, 1, signal);
+    if (songs(rows).length) return { asked, usedQuery: q, tried, rows, found, pages: 1, more: PER_PAGE < found };
+  }
+  return { asked, usedQuery: asked, tried, rows: [], found: 0, pages: 1, more: false };
+}
+
+// "Show more": the next page of the same search, added to what is there.
+async function nextPage(answer, signal) {
+  const page = answer.pages + 1;
+  const { rows, found } = await ask(answer.usedQuery, page, signal);
+  if (answer.pages + 1 !== page) return;                     // another call added this page meanwhile
+  const before = songs(answer.rows).length;
+  const have = new Set(answer.rows.map((r) => r.md5));
+  answer.rows = answer.rows.concat(rows.filter((r) => !have.has(r.md5)));
+  answer.pages = page;
+  if (found) answer.found = found;
+  // stop offering more once a page brings no new song, or everything the site has was asked for
+  answer.more = songs(answer.rows).length > before && page * PER_PAGE < answer.found;
+}
+
+// Song lookup for the screens: what was typed -> songs, the one asked for by name first.
+//   const { songs, found, more, usedQuery } = await search('everlong', { page: 1, signal });
+// - songs: every song of pages 1..page, grouped and ordered by songs() in catalog.js (the whole list
+//   again on every call: a later page can add a version to a song that is already there).
+// - usedQuery: the query the songs really came from. When what was typed finds nothing, up to two
+//   second tries are asked by themselves; usedQuery !== query then means "Showing results for ...".
+//   `tried` lists every query that was asked, in order.
+// - found: how many charts the chart site has for usedQuery. more: whether page + 1 is worth asking.
+// - page: the last page that is in `songs`.
+// - songs is empty when nothing was found, also after the second tries.
+// { signal } calls it off (the promise then rejects with an error named 'AbortError'); { real } is
+// (md5) => true | false | undefined, what the library knows about real-kit versions.
+// A search that was answered before comes from memory with no request (the last 50 are kept).
+// Rejects with a ChartSiteError from net.js (kind 'down', 'busy' or 'refused') when the site fails.
+export async function search(query, { page = 1, signal, real } = {}) {
+  const asked = tidy(query);
+  if (!asked) return { query: asked, usedQuery: asked, tried: [], songs: [], found: 0, more: false, page: 0 };
+  const key = asked.toLowerCase();
+  let answer = answers.get(key);
+  if (!answer) answer = await firstPage(asked, signal);
+  if (answer.rows.length) keep(answers, key, answer, KEEP_ANSWERS);    // "nothing found" is asked again next time
+  while (answer.pages < page && answer.more) await nextPage(answer, signal);
+  return {
+    query: asked,
+    usedQuery: answer.usedQuery,
+    tried: answer.tried,
+    songs: songs(answer.rows, { query: asked, real: knows(real) }),
+    found: answer.found,
+    more: answer.more,
+    page: answer.pages,
+  };
+}
+
+// The song a version belongs to, from the answers still in memory: { song, chart } or null.
+// The song has the versions the search that found it knew of. No request is made.
+export function remembered(md5, { real } = {}) {
+  const lists = [...answers.values()].filter((a) => a.rows.some((r) => r.md5 === md5)).reverse();
+  for (const hide of [true, false]) {
+    for (const a of lists) {
+      const hit = findVersion(songs(a.rows, { query: a.asked, real: knows(real), hide }), md5);
+      if (hit) return hit;
+    }
+  }
+  const v = seen.get(md5);
+  return v ? findVersion(songs([v], { real: knows(real), hide: false }), md5) : null;
+}
+
+// One version looked up by its md5 with ONE request to the chart site's advanced
+// search (for a song page opened by its address): { song, chart }, the song having
+// just that version, or null when the site no longer has it.
+export async function advancedByHash(md5, { signal, real } = {}) {
+  const body = await post('/search/advanced', {
+    hash: md5, instrument: 'drums', difficulty: null, drumType: null, drumsReviewed: false,
+    source: 'website', page: 1, per_page: PER_PAGE,
+  }, { signal });
+  const v = cutDown(body).find((r) => r.md5 === md5);
+  return v ? findVersion(songs([v], { real: knows(real), hide: false }), md5) : null;
 }
 
 // How well a chart fits the song: higher is better, below 0 is "not this song".
@@ -108,18 +231,58 @@ async function sngIndex(url) {
   return { files, mask };
 }
 
-// The parsed drum chart of one search result.
-export async function loadChart(chart, difficulty = 'expert') {
-  const url = `${FILES}/${chart.md5}.sng`;
+async function readNotesFile(md5) {
+  const url = `${FILES}/${md5}.sng`;
   const { files, mask } = await sngIndex(url);
   const file = files.find((f) => f.name.toLowerCase() === 'notes.chart')
     || files.find((f) => f.name.toLowerCase() === 'notes.mid');
   if (!file) throw new Error('that chart has no notes file');
   const raw = await range(url, file.offset, file.offset + file.size - 1);
   for (let i = 0; i < raw.length; i++) raw[i] ^= mask[i % 16] ^ (i & 0xff);
-  const parsed = parseNotesFile(file.name, raw, difficulty, chart.drumType);
+  born.set(raw, { md5, name: file.name });
+  return raw;
+}
+
+// The notes file of a version (notes.chart or notes.mid, as bytes), read out of
+// its package with two or three range requests. The bytes stay in memory per
+// md5, so asking again (another level, Play after the song page) costs no
+// request; two calls at once share one load. A failed load is not kept.
+// Never change the bytes: every caller gets the same array.
+export function fetchNotesFile(md5) {
+  const kept = notesFiles.get(md5);
+  if (kept) {
+    keep(notesFiles, md5, kept, KEEP_FILES);
+    return Promise.resolve(kept);
+  }
+  let load = fetching.get(md5);
+  if (!load) {
+    load = readNotesFile(md5).then((bytes) => {
+      keep(notesFiles, md5, bytes, KEEP_FILES);
+      return bytes;
+    }).finally(() => { if (fetching.get(md5) === load) fetching.delete(md5); });
+    fetching.set(md5, load);
+  }
+  return load;
+}
+
+const isMidi = (b) => b[0] === 0x4d && b[1] === 0x54 && b[2] === 0x68 && b[3] === 0x64;   // "MThd"
+
+// The drum chart in a notes file, at one level, with every time moved by the
+// version's delay (seconds): { notes, phrases, bars, beats, sections, difficulty,
+// available, drumType, format, real, ... }. No request: parsing the same bytes
+// again for another level is instant, and every call gives fresh objects.
+// - bytes: what fetchNotesFile() gave, or any notes.chart / notes.mid bytes.
+// - level: 'expert' | 'hard' | 'medium' | 'easy'; a level the file lacks falls back to its highest.
+// - delay: the version's `delay`.
+// - drumType: the version's `drumType`. A .mid without tom markers cannot tell cymbals
+//   from toms by itself, so hand it over whenever the version is known.
+export function parseNotes(bytes, level = 'expert', delay = 0, drumType = null) {
+  const from = born.get(bytes);
+  const name = from?.name || (isMidi(bytes) ? 'notes.mid' : 'notes.chart');
+  const parsed = parseNotesFile(name, bytes, level, drumType);
   if (!parsed.notes.length) throw new Error('that chart has no drum notes');
-  const shift = (chart.delay || 0) + (parsed.offset || 0);
+  if (from) realKits.set(from.md5, Boolean(parsed.real));
+  const shift = (delay || 0) + (parsed.offset || 0);
   if (shift) {
     for (const n of parsed.notes) n.t += shift;
     parsed.phrases = parsed.phrases.map((t) => t + shift);
@@ -128,6 +291,11 @@ export async function loadChart(chart, difficulty = 'expert') {
     parsed.sections = parsed.sections.map((s) => ({ ...s, t: s.t + shift }));
   }
   return parsed;
+}
+
+// The parsed drum chart of one search result.
+export async function loadChart(chart, difficulty = 'expert') {
+  return parseNotes(await fetchNotesFile(chart.md5), difficulty, chart.delay, chart.drumType);
 }
 
 // The chart was timed to its own copy of the song, which can start earlier or

@@ -6,7 +6,7 @@
 //
 // Pure functions, no DOM and no network: runs in Node (tests/catalog_check.mjs).
 
-import { norm, cleanTitle, songKey } from './text.js';
+import { cleanTitle, songKey } from './text.js';
 
 export const LEVELS = ['expert', 'hard', 'medium', 'easy'];
 
@@ -15,27 +15,30 @@ const round = (n, places) => Math.round(n * 10 ** places) / 10 ** places;
 
 // A raw answer row is 3 to 70 KB. This is all of it that is kept: about 400 bytes.
 // Times are in seconds; `length` is the song_length the site reports (what fit()
-// compares with), `playLength` where the notes end (better for showing).
+// compares with), `playLength` where the notes end (better for showing: the
+// site's song_length is wrong on some rows).
 export function slim(row) {
   const data = row.notesData || {};
-  const levels = {};
+  const counts = {};
   let notes = 0;
   for (const c of data.noteCounts || []) {
     if (c?.instrument !== 'drums') continue;
     notes = Math.max(notes, c.count || 0);
-    if (LEVELS.includes(c.difficulty) && c.count > 0) levels[c.difficulty] = c.count;
+    counts[c.difficulty] = c.count || 0;
   }
+  const levels = {};
+  for (const level of LEVELS) if (counts[level] > 0) levels[level] = counts[level];
   const length = (row.song_length || 0) / 1000;
   const playLength = round((data.effectiveLength || 0) / 1000, 3);
   const over = playLength || length;
   return {
     md5: row.md5,
-    name: cut(row.name, 120),
-    artist: cut(row.artist, 80),
-    album: cut(row.album, 80),
+    name: cut(row.name, 100),
+    artist: cut(row.artist, 60),
+    album: cut(row.album, 48),
     year: Number(/\d{4}/.exec(String(row.year ?? ''))?.[0]) || 0,      // "1964 (July 10)" -> 1964, unknown -> 0
-    genre: cut(row.genre, 32),
-    charter: cut(row.charter, 48),
+    genre: cut(row.genre, 20),
+    charter: cut(row.charter, 40),
     length,
     playLength,
     tier: Number.isFinite(row.diff_drums) ? row.diff_drums : -1,       // how hard the site says the drums are, -1 unknown
@@ -45,9 +48,9 @@ export function slim(row) {
     lyrics: Boolean(data.hasLyrics),                                   // can be lined up with Spotify by its lyrics
     twoKick: Boolean(data.has2xKick),
     delay: (row.delay || 0) / 1000 + (row.chart_offset || 0) / 1000,
-    notes,
+    notes,                                                             // the most notes any level has
     art: row.albumArtMd5 || '',
-    pack: cut(row.packName, 32),
+    pack: cut(row.packName, 24),
     modified: Date.parse(row.modifiedTime) || 0,
   };
 }
@@ -131,15 +134,22 @@ export function badge(v, known) {
 
 // ---- songs ----------------------------------------------------------------
 
+const ODD = { ø: 'o', Ø: 'O', æ: 'ae', Æ: 'AE', œ: 'oe', Œ: 'OE', ß: 'ss', đ: 'd', Đ: 'D', ł: 'l', Ł: 'L' };
+
+// "Motörhead" -> "Motorhead". The chart site does not fold accents itself.
+export function fold(s) {
+  return (s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').normalize('NFC').replace(/[øØæÆœŒßđĐłŁ]/g, (c) => ODD[c]);
+}
+
 // Words for comparing what was typed with a title: accents folded, apostrophes dropped, "the" ignored.
 function words(s) {
-  return (s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/['’`]/g, '')
-    .split(/[^a-z0-9]+/).filter((w) => w && w !== 'the');
+  return fold(s).toLowerCase().replace(/['’`]/g, '').split(/[^\p{L}\p{N}]+/u).filter((w) => w && w !== 'the');
 }
 const sameWords = (a, b) => a.length > 0 && a.length === b.length && [...a].sort().join(' ') === [...b].sort().join(' ');
 const firstArtist = (artist) => (artist || '').split(',')[0];
+const flat = (s) => words(s).join(' ');
 
-// 2: the words typed are exactly the title plus the artist ("everlong foo fighters").
+// 2: the words typed are exactly the title plus the artist ("everlong foo fighters", in any order).
 // 1: they are exactly the title, or exactly the artist. 0: neither.
 export function exactness(song, query) {
   const q = words(query);
@@ -155,6 +165,7 @@ export function exactness(song, query) {
 // Returns songs in the order to show them:
 //   { key, title, artist, album, year, art, length, charts: [version, ...], labels, exact }
 // `charts` are the song's versions, the one to play first at [0]; each is the slim record plus `labels`.
+// `labels` are those of that first version: not empty means the song only exists as live, cover, 2x pedal...
 // `key` is songKey(title, artist): the same key the library files the song under.
 export function songs(rows, { query = '', real, hide = true } = {}) {
   const seen = new Set();
@@ -166,10 +177,11 @@ export function songs(rows, { query = '', real, hide = true } = {}) {
     if (hide && hidden(v)) continue;
     v.labels = labels(v);
     const key = songKey(plainName(v.name), v.artist);
+    if (key === '|') continue;                               // no name and no artist: nothing to show
     if (!groups.has(key)) groups.set(key, { key, first: groups.size, charts: [] });
     const list = groups.get(key).charts;
     // a charter's newer upload of the same title replaces the older one
-    const same = v.charter ? list.findIndex((o) => norm(o.charter) === norm(v.charter) && norm(o.name) === norm(v.name)) : -1;
+    const same = v.charter ? list.findIndex((o) => flat(o.charter) === flat(v.charter) && flat(o.name) === flat(v.name)) : -1;
     if (same < 0) list.push(v);
     else if (v.modified > list[same].modified) list[same] = v;
   }
@@ -230,13 +242,6 @@ export function findVersion(list, md5) {
 }
 
 // ---- second tries ---------------------------------------------------------
-
-const ODD = { ø: 'o', Ø: 'O', æ: 'ae', Æ: 'AE', œ: 'oe', Œ: 'OE', ß: 'ss', đ: 'd', Đ: 'D', ł: 'l', Ł: 'L' };
-
-// "Motörhead" -> "Motorhead". The chart site does not fold accents itself.
-export function fold(s) {
-  return (s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').normalize('NFC').replace(/[øØæÆœŒßđĐłŁ]/g, (c) => ODD[c]);
-}
 
 // What to ask instead when a search finds nothing: at most two more queries.
 // (1) accents folded and punctuation after the last word removed: the site
