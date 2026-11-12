@@ -38,7 +38,7 @@ export function voice(ctx, out, noise, pad, at, { open = false, gain = 1 } = {})
     f.Q.value = q;
     s.connect(f);
     f.connect(env(peak, attack, decay));
-    s.start(at, (at * 7.3) % 1);                       // a different bit of noise each time
+    s.start(at, 0.123);                                // the same bit of noise each time: a hit always sounds the same
     s.stop(at + attack + decay + 0.05);
   };
 
@@ -67,10 +67,12 @@ export function voice(ctx, out, noise, pad, at, { open = false, gain = 1 } = {})
       tone('sine', 3350, 3350, 0, 0.09, 0.3);            // the bell's ping
       break;
     case 'tom':
-      tone('sine', 230, 150, 0.12, 0.8, 0.26);
+      tone('sine', 300, 205, 0.13, 0.7, 0.28);
+      tone('triangle', 452, 310, 0.13, 0.16, 0.16);
       break;
     case 'floor':
-      tone('sine', 135, 82, 0.16, 0.9, 0.38);
+      tone('sine', 196, 118, 0.2, 0.72, 0.5);
+      tone('triangle', 294, 178, 0.2, 0.16, 0.26);
       break;
     case 'click':
       tone('square', 1100, 1100, 0, 0.22, 0.025);
@@ -110,7 +112,11 @@ export class Synth {
       this.ctx = new AC({ latencyHint: 'interactive' });
       this.noise = whiteNoise(this.ctx);
       this.master = this.ctx.createDynamicsCompressor();  // many hits at once must not crackle
+      this.master.knee.value = 0;
       this.master.connect(this.ctx.destination);
+      this.trim = this.ctx.createGain();                  // room for a bass drum, snare, hi-hat and crash together
+      this.trim.gain.value = 0.45;
+      this.trim.connect(this.master);
       this.open();
     }
     if (this.ctx.state !== 'running') await this.ctx.resume();
@@ -122,8 +128,8 @@ export class Synth {
     this.clicks = this.ctx.createGain();
     this.guide.gain.value = this.levels.guide;
     this.clicks.gain.value = this.levels.click;
-    this.guide.connect(this.master);
-    this.clicks.connect(this.master);
+    this.guide.connect(this.trim);
+    this.clicks.connect(this.trim);
   }
 
   setLevel(which, level) {

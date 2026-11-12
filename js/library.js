@@ -5,13 +5,13 @@
 // it is filed under its artist and title, not under an id either of them gives.
 
 import * as store from './store.js';
-import { norm, cleanTitle } from './charts.js';
+import { cleanTitle, songKey } from './text.js';
 
 const KEY = 'library';
 const KEEP_CHARTS = 6;                 // chart versions remembered per song, so opening it again needs no search
 const KEEP_RUNS = 12;                  // past runs remembered per song
 
-export const songKey = (title, artist) => `${norm((artist || '').split(',')[0])}|${norm(cleanTitle(title))}`;
+export { songKey };
 
 // A letter for how a run went, from the share of the points you got.
 export function grade(accuracy) {
@@ -54,6 +54,7 @@ export function onChange(fn) {
 const slim = (c) => ({
   md5: c.md5, name: c.name, artist: c.artist, album: c.album || '', charter: c.charter || '', length: c.length || 0,
   drumType: c.drumType ?? 0, lyrics: Boolean(c.lyrics), delay: c.delay || 0, notes: c.notes || 0, art: c.art || '',
+  year: c.year || 0, playLength: c.playLength || 0, levels: c.levels || {}, tier: c.tier ?? -1,
 });
 
 // The song's entry, made or filled in from what is known about it now:
@@ -74,6 +75,16 @@ export function remember(song) {
 }
 
 export const get = (key) => load().songs[key] || null;
+export const all = () => Object.values(load().songs);
+
+// Something on an entry was changed in place (the version you chose, progress reset): keep it.
+export const touch = () => save();
+
+// Take a song out of the recent list without forgetting the rest about it.
+export function unplay(key) {
+  const e = load().songs[key];
+  if (e) { e.played = 0; save(); }
+}
 export const find = (title, artist) => get(songKey(title, artist));
 
 export function like(song, on = true) {
