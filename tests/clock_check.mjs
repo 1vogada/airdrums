@@ -258,12 +258,13 @@ function tiles(rate, from, to, seed) {
       const rnd = seeded(5);
       let until = fake, ms = Math.round(fake * 1000);
       const laps = 300;
-      while (c.lap(until) < laps) {
+      let lap = 0;                                                         // counted here from the stretches themselves
+      while (lap < laps + 1) {
         ms += 4 + Math.floor(rnd() * 37);
         const next = ms / 1000 + 0.14;
         for (const s of c.span(until, next)) {
-          const lap = c.lap(s.at + (s.to - s.from) / c.rate / 2);          // the lap in the middle of this stretch
           for (const n of notes) if (n >= s.from && n < s.to) { const k = `${lap}|${n}`; count.set(k, (count.get(k) || 0) + 1); asked++; }
+          if (s.to === to) lap++;                                          // a stretch that reaches the loop's end closes a lap
         }
         until = next;
       }
