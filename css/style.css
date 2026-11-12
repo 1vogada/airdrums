@@ -528,6 +528,8 @@ a.row:hover, a.row:focus-visible { background: var(--panel-2); }
 }
 @media (max-width: 720px) {
   .page { padding: 16px 16px 72px; }
+  .top { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 8px 12px; justify-content: space-between; }
+  .top .field { order: 3; flex: 1 1 100%; max-width: none; }
   .top nav a { padding: 6px; }
   .tile.huge { width: 96px; height: 96px; }
   .tile.huge b { font-size: 40px; }
