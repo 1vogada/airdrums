@@ -23,6 +23,15 @@ exist yet (Learn, results, the part strip) are rendered from a feature table (`F
 `{ learn, results, partStrip, siteSound, micOnSiteClock, spotifyStart, spotifyLiked }`) that an item switches on
 when it is green. The rig checks that no link or button on any screen leads to a route without a screen.
 
+## Findings on the first modules
+
+[foundation-findings.md](foundation-findings.md) lists what six reviewers found in `js/clock.js`, `js/sound.js`,
+`js/synth.js`, `js/library.js`, the section reading and the way they meet `js/game.js` and the microphone.
+Every **confirmed** finding is fixed by the builder who owns that file; every **not verified** one is checked by
+that builder and fixed if real. Ownership: `clock.js`, `sound.js`, `synth.js` belong to the sound-engine piece;
+`game.js` and `practice.js` to the practice piece; `chartparse.js` (sections) and `parts.js` to the parts piece;
+`library.js` and `store.js` to the library piece.
+
 ## Changes to items
 
 ### B02 rig
@@ -137,8 +146,17 @@ when it is green. The rig checks that no link or button on any screen leads to a
   version with the same cleaned name stem (the name minus number, letter suffix and "(2)") is learned, it starts
   at that part's clean drums and tempo, skips the automatic Listen pass and says "Same as Chorus 1? Starting at
   100%". One clean pass then ticks it. A pure rule in `practice.js` with a table test.
-- `hearsSite(soundTimes, micOnsets)`: pure. True when loud mic onsets fall 0 to 150 ms after the site's own
-  scheduled sounds often enough (at least 3 and at least 40% of the sounds).
+- `hearsSite(soundTimes, micOnsets, last)`: pure, and it answers three ways, so that failing to recognise the
+  speaker can never switch the click back on (see [foundation-findings.md](foundation-findings.md)):
+  - `"hears"`: 8 or more site sounds, and at least 75% of them are each followed by a loud onset at ONE steady
+    lag (within 15 ms of each other) anywhere from 0 to 500 ms. It also returns that lag.
+  - `"does not hear"`: only from a quiet probe: 8 or more site sounds with at most one (or 10%) of them followed
+    by any loud onset within 0 to 450 ms (not counting past the next site sound).
+  - anything else (the learner was playing during the probe, or fewer than 8 sounds): the last answer stands.
+    The first answer is "hears" (the silent turn) unless "I'm on headphones" is ticked.
+  The lag found is the computer speaker's unreported delay plus the mic's own: it is offered as `own.outDelay`
+  ("Your speaker is about 210 ms late. Use it?"), never applied silently. It says nothing about the kit's own
+  stick-to-sound delay; that still comes from the learner's hits (`fitDelay`).
 
 ### B12 Learn
 
