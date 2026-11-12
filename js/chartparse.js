@@ -69,6 +69,24 @@ function measures(resolution, sigs, lastTick, clock) {
   return { bars, beats };
 }
 
+// "verse_1a" or "gtr solo" as the chart writes it -> "Verse 1a", "Gtr Solo".
+export function sectionName(raw) {
+  const words = raw.replace(/_/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
+  return words.map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+}
+
+// The song's parts in order, in seconds: [{ t, name }]. One per place.
+function sectionList(marks, clock) {
+  const out = [];
+  for (const m of [...marks].sort((a, b) => a.tick - b.tick)) {
+    const name = sectionName(m.name);
+    if (!name) continue;
+    if (out.length && out[out.length - 1].tick === m.tick) out[out.length - 1].name = name;
+    else out.push({ tick: m.tick, name });
+  }
+  return out.map((s) => ({ t: clock(s.tick), name: s.name }));
+}
+
 function finish(hits, phrases, clock, drumType, extra) {
   const seen = new Set();
   const notes = [];
@@ -114,8 +132,10 @@ export function parseChartText(text, wanted = 'expert') {
     if (ts && Number(ts[2]) > 0) sigs.push({ tick: Number(ts[1]), num: Number(ts[2]), den: 2 ** Number(ts[3] ?? 2) });
   }
   tempos.sort((a, b) => a.tick - b.tick);
-  const marks = [], sung = [];
+  const marks = [], sung = [], parts = [];
   for (const l of sections.Events || []) {
+    const part = /^(\d+)\s*=\s*E\s+"\[?(?:section[ _]|prc_)([^\]"]+)\]?"/.exec(l);
+    if (part) { parts.push({ tick: Number(part[1]), name: part[2] }); continue; }
     const m = /^(\d+)\s*=\s*E\s+"(phrase_start|lyric )/.exec(l);
     if (m) (m[2] === 'phrase_start' ? marks : sung).push(Number(m[1]));
   }
@@ -144,6 +164,7 @@ export function parseChartText(text, wanted = 'expert') {
   const clock = tempoClock(resolution, tempos);
   return finish(hits, phrases, clock, drumType, {
     difficulty, available, drumType, offset: Number(song.Offset) || 0, format: 'chart',
+    sections: sectionList(parts, clock),
     ...measures(resolution, sigs, hits.reduce((m, h) => Math.max(m, h.tick), 0), clock),
   });
 }
@@ -241,7 +262,7 @@ function readMidi(bytes) {
 }
 
 function readTrack(b, p, end) {
-  const track = { name: '', tempos: [], sigs: [], on: [], off: [], lyrics: [] };
+  const track = { name: '', tempos: [], sigs: [], on: [], off: [], lyrics: [], texts: [] };
   let tick = 0, status = 0;
   const vlq = () => { let v = 0, c; do { c = b[p++]; v = (v << 7) | (c & 0x7f); } while (c & 0x80 && p < end); return v; };
   while (p < end) {
@@ -252,6 +273,7 @@ function readTrack(b, p, end) {
       const type = b[p++], len = vlq();
       if (type === 0x03 && !track.name) track.name = new TextDecoder('latin1').decode(b.subarray(p, p + len));
       else if ((type === 0x05 || type === 0x01) && len && b[p] !== 0x5b) track.lyrics.push(tick);   // not "[section]" text
+      else if (type === 0x01 && len) track.texts.push({ tick, text: new TextDecoder('latin1').decode(b.subarray(p, p + len)) });
       else if (type === 0x51 && len === 3) track.tempos.push({ tick, usPerBeat: (b[p] << 16) | (b[p + 1] << 8) | b[p + 2] });
       else if (type === 0x58 && len >= 2 && b[p]) track.sigs.push({ tick, num: b[p], den: 2 ** b[p + 1] });
       p += len;
@@ -322,8 +344,16 @@ export function parseMidi(bytes, wanted = 'expert', drumTypeHint = null) {
     }
   }
   const clock = tempoClock(division, tempos);
+  const parts = [];
+  for (const t of tracks.filter((x) => /^EVENTS$/i.test(x.name.trim()))) {
+    for (const e of t.texts) {
+      const m = /^\[(?:section[ _]|prc_)([^\]]+)\]/.exec(e.text.trim());
+      if (m) parts.push({ tick: e.tick, name: m[1] });
+    }
+  }
   return finish(hits, phrases, clock, drumType, {
     difficulty, available, drumType, offset: 0, format: 'mid', real,
+    sections: sectionList(parts, clock),
     ...measures(division, tracks.flatMap((t) => t.sigs), hits.reduce((m, h) => Math.max(m, h.tick), 0), clock),
   });
 }

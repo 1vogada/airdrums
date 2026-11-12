@@ -125,6 +125,7 @@ export async function loadChart(chart, difficulty = 'expert') {
     parsed.phrases = parsed.phrases.map((t) => t + shift);
     parsed.bars = parsed.bars.map((t) => t + shift);
     parsed.beats = parsed.beats.map((t) => t + shift);
+    parsed.sections = parsed.sections.map((s) => ({ ...s, t: s.t + shift }));
   }
   return parsed;
 }
