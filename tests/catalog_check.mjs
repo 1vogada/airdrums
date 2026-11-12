@@ -5,7 +5,7 @@
 // hand-written notes file, a package built in memory).
 import { isDeepStrictEqual } from 'node:util';
 import {
-  slim, songs, retries, labels, plainName, hidden, isReal, busy, badge, exactness, findSong, findVersion, artUrl, fold, LEVELS,
+  slim, songs, retries, labels, plainName, hidden, isReal, busy, badge, exactness, findSong, findVersion, matching, artUrl, fold, LEVELS,
 } from '../js/catalog.js';
 import { norm, cleanTitle, songKey } from '../js/text.js';
 import { chartSite, isAbort } from '../js/net.js';
@@ -238,6 +238,13 @@ const SIX = [A, B, A_AGAIN, ALBUM, LIVE, OTHER];
   const hit = findVersion(list, B.md5);
   check('findVersion: the song a version belongs to', hit?.song.title === 'Test Song' && hit.chart.charter === 'Fixture B' && findVersion(list, ALBUM.md5) === null);
 
+  const mine = [{ title: 'Other Song', artist: 'Someone Else', album: 'Test Album' }, { title: 'Test Song', artist: 'The Fixtures' }, { title: 'Évérfix', artist: 'Foo Fixers', charts: [] }];
+  const titles = (query) => matching(mine, query).map((s) => s.title).join();
+  check('your own songs that fit what is being typed: every word begins a word of the title, artist or album',
+    titles('tes') === 'Other Song,Test Song' && titles('so tes') === 'Other Song,Test Song' && titles('fix') === 'Test Song,Évérfix' && titles('everf foo') === 'Évérfix' && titles('zzz') === '' && titles('est') === '', [titles('tes'), titles('fix')]);
+  check('...the one asked for by name first, and nothing while nothing is typed', titles('test song') === 'Test Song,Other Song' && titles('') === '' && titles('the') === '' && matching(null, 'x').length === 0, titles('test song'));
+  check('findVersion copes with a library song that has no versions', findVersion(mine, 'x') === null);
+
   const [a, b, live] = list[0].charts;
   check('a row gets one badge: a caution before a plus',
     isDeepStrictEqual(badge(live), { text: 'Live', caution: true }) && isDeepStrictEqual(badge(b), { text: 'Expert only', caution: true })
@@ -318,6 +325,7 @@ const caught = async (promise) => { try { await promise; return null; } catch (e
   check('...for one request', sent.length === 1, sent.length);
   const again = await charts.search('  TEST ');
   check('the same search again comes from memory: no request', sent.length === 1 && again.songs.length === 2 && isDeepStrictEqual(again.songs, r.songs), sent.length);
+  check('...and typed in other capitals it is still the query that was used', again.query === 'TEST' && again.usedQuery === 'TEST' && isDeepStrictEqual(again.tried, ['TEST']), again);
   const named = await charts.search('other song someone else');
   check('the song asked for by title and artist comes first', named.songs[0].title === 'Other Song' && named.songs[0].exact === 2, named.songs.map((s) => [s.title, s.exact]));
   const none = await charts.search('   ');

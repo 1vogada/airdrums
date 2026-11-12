@@ -235,10 +235,26 @@ export function findSong(list, title, artist) {
 // The song that has this version, and the version: { song, chart } or null.
 export function findVersion(list, md5) {
   for (const song of list || []) {
-    const chart = song.charts.find((c) => c.md5 === md5);
+    const chart = (song.charts || []).find((c) => c.md5 === md5);
     if (chart) return { song, chart };
   }
   return null;
+}
+
+// Songs you already have that fit what is being typed: shown at once under
+// "Your songs" while the chart site is asked, and when it is down. Every typed
+// word has to begin a word of the title, the artist or the album. The song
+// asked for by name comes first; the rest keep the order they were given in.
+// `list`: library entries or songs, anything with { title, artist }.
+export function matching(list, query) {
+  const typed = words(query);
+  if (!typed.length) return [];
+  const hits = [];
+  (list || []).forEach((song, i) => {
+    const has = [...words(song.title), ...words(song.artist), ...words(song.album)];
+    if (typed.every((w) => has.some((h) => h.startsWith(w)))) hits.push({ song, i, exact: exactness(song, query) });
+  });
+  return hits.sort((a, b) => b.exact - a.exact || a.i - b.i).map((h) => h.song);
 }
 
 // ---- second tries ---------------------------------------------------------

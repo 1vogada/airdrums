@@ -88,9 +88,9 @@ async function firstPage(asked, signal) {
   for (const q of [asked, ...retries(asked)]) {
     tried.push(q);
     const { rows, found } = await ask(q, 1, signal);
-    if (songs(rows).length) return { asked, usedQuery: q, tried, rows, found, pages: 1, more: PER_PAGE < found };
+    if (songs(rows).length) return { asked, usedQuery: q, retried: tried.length > 1, tried, rows, found, pages: 1, more: PER_PAGE < found };
   }
-  return { asked, usedQuery: asked, tried, rows: [], found: 0, pages: 1, more: false };
+  return { asked, usedQuery: asked, retried: false, tried, rows: [], found: 0, pages: 1, more: false };
 }
 
 // "Show more": the next page of the same search, added to what is there.
@@ -131,8 +131,8 @@ export async function search(query, { page = 1, signal, real } = {}) {
   while (answer.pages < page && answer.more) await nextPage(answer, signal);
   return {
     query: asked,
-    usedQuery: answer.usedQuery,
-    tried: answer.tried,
+    usedQuery: answer.retried ? answer.usedQuery : asked,              // the same search typed in other capitals is no second try
+    tried: [asked, ...answer.tried.slice(1)],
     songs: songs(answer.rows, { query: asked, real: knows(real) }),
     found: answer.found,
     more: answer.more,
